@@ -1,0 +1,237 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+import threading
+
+from app.core.database import get_db, SessionLocal
+from app.models.project import Project, ProjectStatus
+from app.models.post import Post
+from app.models.brand import Brand
+from app.services.claude_service import generate_editorial_plan, regenerate_single_post, generate_image_prompt
+from app.services.url_analyzer import get_brand_context_from_urls
+from app.api.routes.auth import get_current_user
+import asyncio
+from app.models.user import User
+
+router = APIRouter()
+
+
+class RegeneratePostRequest(BaseModel):
+    user_prompt: str
+
+
+def run_generation(project_id: int):
+    """Esegue la generazione in background"""
+    db = SessionLocal()
+    try:
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            print(f"[GEN] Project {project_id} not found")
+            return
+        
+        brand = db.query(Brand).filter(Brand.id == project.brand_id).first()
+        if not brand:
+            print(f"[GEN] Brand not found for project {project_id}")
+            return
+        
+        print(f"[GEN] Starting generation for project {project_id} - Brand: {brand.name}")
+        
+        # === ANALISI URL DI RIFERIMENTO ===
+        urls_content = ""
+        reference_urls = project.reference_urls or []
+        if reference_urls:
+            print(f"[GEN] Analyzing {len(reference_urls)} reference URLs...")
+            try:
+                # Esegui async in sync context
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                urls_content = loop.run_until_complete(
+                    get_brand_context_from_urls(
+                        urls=reference_urls,
+                        brand_name=brand.name if brand else project.name
+                    )
+                )
+                loop.close()
+                print(f"[GEN] URL context generated: {len(urls_content)} chars")
+            except Exception as e:
+                print(f"[GEN] URL analysis error: {e}")
+        
+        # Combina content pillars
+        themes = project.content_pillars or project.themes or []
+        
+        # Costruisci brief arricchito
+        enriched_brief = project.brief or ""
+        if project.target_audience:
+            enriched_brief += f"\n\nTARGET AUDIENCE: {project.target_audience}"
+        if project.competitors:
+            enriched_brief += f"\n\nCOMPETITOR DA CONSIDERARE: {', '.join(project.competitors)}"
+        
+        posts_per_week = {}
+        if project.platforms:
+            for p in project.platforms:
+                posts_per_week[p] = project.posts_per_week.get(p, 2) if project.posts_per_week else 2
+        
+        posts = generate_editorial_plan(
+            brand_name=brand.name,
+            brand_sector=brand.sector or "",
+            tone_of_voice=brand.tone_of_voice or "",
+            brand_values=brand.brand_values or "",
+            start_date=str(project.start_date),
+            end_date=str(project.end_date),
+            platforms=project.platforms or [],
+            posts_per_week=posts_per_week,
+            brief=enriched_brief,
+            themes=themes,
+            custom_prompt=project.custom_prompt or "",
+            brand_style_guide=brand.style_guide or "",
+            urls_content=urls_content
+        )
+        
+        print(f"[GEN] Claude returned {len(posts)} posts")
+        
+        # Delete existing posts
+        deleted = db.query(Post).filter(Post.project_id == project_id).delete()
+        print(f"[GEN] Deleted {deleted} existing posts")
+        
+        # Save new posts
+        for post_data in posts:
+            post = Post(
+                project_id=project_id,
+                platform=post_data.get("platform", ""),
+                scheduled_date=post_data.get("scheduled_date"),
+                scheduled_time=post_data.get("scheduled_time", "09:00"),
+                content=post_data.get("content", ""),
+                hashtags=post_data.get("hashtags", []),
+                pillar=post_data.get("pillar", ""),
+                post_type=post_data.get("post_type", ""),
+                visual_suggestion=post_data.get("visual_suggestion", ""),
+                cta=post_data.get("cta", "")
+            )
+            db.add(post)
+        
+        project.status = ProjectStatus.review
+        db.commit()
+        print(f"[GEN] ✅ Saved {len(posts)} posts, status set to review")
+        
+    except Exception as e:
+        print(f"[GEN] ❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            project = db.query(Project).filter(Project.id == project_id).first()
+            if project:
+                project.status = ProjectStatus.draft
+                db.commit()
+        except:
+            pass
+    finally:
+        db.close()
+
+
+@router.post("/calendar/{project_id}")
+def generate_calendar(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    project.status = ProjectStatus.generating
+    db.commit()
+    
+    thread = threading.Thread(target=run_generation, args=(project_id,))
+    thread.start()
+    
+    return {"status": "generating", "message": "Generation started"}
+
+
+@router.get("/status/{project_id}")
+def get_generation_status(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    post_count = db.query(Post).filter(Post.project_id == project_id).count()
+    
+    return {
+        "status": project.status.value if project.status else "draft",
+        "post_count": post_count
+    }
+
+
+@router.post("/regenerate-post/{post_id}")
+def regenerate_post(
+    post_id: int,
+    request: RegeneratePostRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Rigenera un singolo post con AI"""
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    project = db.query(Project).filter(Project.id == post.project_id).first()
+    brand = db.query(Brand).filter(Brand.id == project.brand_id).first() if project else None
+    
+    result = regenerate_single_post(
+        post_content=post.content,
+        platform=post.platform,
+        pillar=post.pillar or "",
+        user_prompt=request.user_prompt,
+        brand_context=f"{brand.name} - {brand.sector}" if brand else "",
+        tone_of_voice=brand.tone_of_voice if brand else "",
+        brand_style_guide=brand.style_guide if brand else ""
+    )
+    
+    # Update post
+    post.content = result.get("content", post.content)
+    post.hashtags = result.get("hashtags", post.hashtags)
+    post.visual_suggestion = result.get("visual_suggestion", post.visual_suggestion)
+    post.cta = result.get("cta", post.cta)
+    db.commit()
+    db.refresh(post)
+    
+    return {
+        "id": post.id,
+        "content": post.content,
+        "hashtags": post.hashtags,
+        "visual_suggestion": post.visual_suggestion,
+        "cta": post.cta
+    }
+
+
+@router.post("/image-prompt/{post_id}")
+def generate_image_prompt_endpoint(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Genera prompt per immagine AI"""
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    
+    project = db.query(Project).filter(Project.id == post.project_id).first()
+    brand = db.query(Brand).filter(Brand.id == project.brand_id).first() if project else None
+    
+    image_prompt = generate_image_prompt(
+        post_content=post.content,
+        platform=post.platform,
+        pillar=post.pillar or "",
+        brand_name=brand.name if brand else "",
+        brand_sector=brand.sector if brand else "",
+        brand_colors=brand.colors if brand else ""
+    )
+    
+    # Save to post
+    post.image_prompt = image_prompt
+    db.commit()
+    
+    return {"image_prompt": image_prompt}

@@ -1,0 +1,253 @@
+from anthropic import Anthropic
+from app.core.config import settings
+import json
+import re
+
+client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+# Prompt di default generico (può essere sovrascritto dal brand)
+DEFAULT_STYLE_GUIDE = """
+LINEE GUIDA GENERALI PER CONTENUTI SOCIAL:
+
+1. LINKEDIN (200-400 parole):
+   - Apertura forte con affermazione o domanda
+   - Corpo strutturato con elenchi (→ o •)
+   - Righe brevi, molto spazio tra paragrafi
+   - Chiusura con riflessione o call to action
+   - Tono professionale ma accessibile
+   - Max 3-5 hashtag pertinenti
+
+2. INSTAGRAM (100-200 parole):
+   - Apertura con 1-2 emoji rilevanti
+   - Testo diretto e visuale
+   - Elenchi numerati se necessario
+   - Call to action finale
+   - 5-10 hashtag popolari e di nicchia
+
+3. FACEBOOK (150-250 parole):
+   - Tono conversazionale
+   - Domande per stimolare engagement
+   - Contenuto condivisibile
+   - 2-3 hashtag
+
+4. BLOG (articolo completo 800-2000 parole):
+   - Titolo H1 ottimizzato per SEO (60-70 caratteri)
+   - Meta description (150-160 caratteri)
+   - Introduzione coinvolgente che presenta il problema (150-200 parole)
+   - Corpo strutturato con sottotitoli H2 e H3
+   - Paragrafi brevi e leggibili (3-4 frasi max)
+   - Elenchi puntati per concetti chiave
+   - Esempi pratici, dati e casi studio
+   - Citazioni o riferimenti autorevoli
+   - Conclusione con sintesi e CTA chiara
+   - Keywords integrate naturalmente (densità 1-2%)
+   - Link interni suggeriti
+   - Lunghezza minima: 800 parole per post informativi, 1500+ per guide approfondite
+
+5. NEWSLETTER:
+   - Oggetto email accattivante
+   - Contenuto di valore
+   - Una sola call to action chiara
+"""
+
+def generate_editorial_plan(
+    brand_name: str,
+    brand_sector: str,
+    tone_of_voice: str,
+    brand_values: str,
+    start_date: str,
+    end_date: str,
+    platforms: list,
+    posts_per_week: dict,
+    brief: str = "",
+    themes: list = None,
+    reference_content: str = "",
+    urls_content: str = "",
+    content_pillars: list = None,
+    custom_prompt: str = "",
+    brand_style_guide: str = ""
+) -> list:
+    """Genera piano editoriale con Claude"""
+    
+    themes_str = ", ".join(themes) if themes else "Temi principali del brand"
+    
+    platform_instructions = []
+    for platform in platforms:
+        weekly = posts_per_week.get(platform, 2)
+        platform_instructions.append(f"- {platform}: {weekly} post a settimana")
+    
+    # Priorità: custom_prompt del progetto > style_guide del brand > default
+    style_guide = custom_prompt or brand_style_guide or DEFAULT_STYLE_GUIDE
+    
+    prompt = f"""Sei un esperto content strategist e social media manager.
+
+BRAND: {brand_name}
+SETTORE: {brand_sector}
+TONO DI VOCE: {tone_of_voice}
+VALORI: {brand_values}
+
+{style_guide}
+
+PERIODO: dal {start_date} al {end_date}
+
+PIATTAFORME E FREQUENZA:
+{chr(10).join(platform_instructions)}
+
+TEMI DA TRATTARE: {themes_str}
+
+BRIEF AGGIUNTIVO: {brief if brief else "Nessuno"}
+
+ISTRUZIONI:
+1. Genera un piano editoriale completo per il periodo indicato
+2. Distribuisci i post uniformemente nel tempo
+3. Alterna i temi/pillar per varietà
+4. Adatta stile e lunghezza a ogni piattaforma
+5. Genera contenuti COMPLETI e pubblicabili, non placeholder
+6. Usa il tono di voce specificato per il brand
+7. Includi hashtag pertinenti al settore
+
+FORMATO OUTPUT - Rispondi SOLO con un array JSON valido:
+[
+  {{
+    "platform": "linkedin",
+    "scheduled_date": "YYYY-MM-DD",
+    "scheduled_time": "09:00",
+    "content": "Testo completo del post",
+    "hashtags": ["hashtag1", "hashtag2"],
+    "pillar": "Nome del tema",
+    "post_type": "educational|inspirational|promotional|engagement",
+    "visual_suggestion": "Descrizione immagine suggerita",
+    "cta": "Call to action"
+  }}
+]
+"""
+
+    print(f"[CLAUDE] Calling API for editorial plan - Brand: {brand_name}")
+    
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=16000,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    response_text = response.content[0].text
+    print(f"[CLAUDE] Response length: {len(response_text)} chars")
+    
+    # Parse JSON
+    try:
+        json_match = re.search(r'\[[\s\S]*\]', response_text)
+        if json_match:
+            posts = json.loads(json_match.group())
+            print(f"[CLAUDE] Parsed {len(posts)} posts")
+            return posts
+    except json.JSONDecodeError as e:
+        print(f"[CLAUDE] JSON parse error: {e}")
+        try:
+            partial = response_text[:response_text.rfind('}')+1] + ']'
+            json_match = re.search(r'\[[\s\S]*\]', partial)
+            if json_match:
+                posts = json.loads(json_match.group())
+                print(f"[CLAUDE] Parsed {len(posts)} posts from partial")
+                return posts
+        except:
+            pass
+    
+    return []
+
+
+def regenerate_single_post(
+    post_content: str,
+    platform: str,
+    pillar: str,
+    user_prompt: str,
+    brand_context: str = "",
+    tone_of_voice: str = "",
+    brand_style_guide: str = ""
+) -> dict:
+    """Rigenera un singolo post con AI basandosi su un prompt utente"""
+    
+    style_section = brand_style_guide if brand_style_guide else DEFAULT_STYLE_GUIDE
+    
+    prompt = f"""Riscrivi questo post per {platform} seguendo le istruzioni dell'utente.
+
+POST ORIGINALE:
+{post_content}
+
+PIATTAFORMA: {platform}
+PILLAR/TEMA: {pillar}
+BRAND: {brand_context}
+TONO DI VOCE: {tone_of_voice}
+
+ISTRUZIONI UTENTE: {user_prompt}
+
+STILE DA SEGUIRE:
+{style_section}
+
+Rispondi SOLO con un JSON valido:
+{{
+  "content": "Nuovo testo del post completo",
+  "hashtags": ["hashtag1", "hashtag2", "hashtag3"],
+  "visual_suggestion": "Suggerimento per visual",
+  "cta": "Call to action"
+}}
+"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    response_text = response.content[0].text
+    
+    try:
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            return json.loads(json_match.group())
+    except json.JSONDecodeError as e:
+        print(f"[CLAUDE] Regenerate parse error: {e}")
+    
+    return {"content": post_content, "hashtags": [], "visual_suggestion": "", "cta": ""}
+
+
+def generate_image_prompt(
+    post_content: str,
+    platform: str,
+    pillar: str,
+    brand_name: str = "",
+    brand_sector: str = "",
+    brand_colors: str = ""
+) -> str:
+    """Genera un prompt dettagliato per la creazione di immagini AI"""
+    
+    color_instruction = f"Usa i colori del brand: {brand_colors}" if brand_colors else "Usa colori professionali e coerenti"
+    
+    prompt = f"""Genera un prompt dettagliato per creare un'immagine con AI (Midjourney/DALL-E) per questo post.
+
+POST: {post_content}
+
+PIATTAFORMA: {platform}
+TEMA: {pillar}
+BRAND: {brand_name}
+SETTORE: {brand_sector}
+
+Il prompt deve:
+1. Essere in inglese
+2. Essere dettagliato e specifico
+3. Includere stile visivo appropriato al settore ({brand_sector})
+4. {color_instruction}
+5. Indicare composizione e mood
+6. NON includere testo nell'immagine
+7. Essere adatto al formato {platform} (quadrato per Instagram, 16:9 per LinkedIn)
+8. Essere professionale e adatto al settore
+
+Rispondi SOLO con il prompt per l'immagine, nient'altro.
+"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=500,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    return response.content[0].text.strip()
