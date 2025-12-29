@@ -12,6 +12,9 @@ from app.models.project import Project
 from app.models.post import Post
 from app.schemas.post import PostCreate, PostUpdate, PostResponse
 from app.services.claude_service import regenerate_single_post, generate_image_prompt, generate_editorial_plan
+
+class ImageGenerateRequest(BaseModel):
+    visual_suggestion: Optional[str] = None
 from app.services.url_analyzer import get_brand_context_from_urls
 import asyncio
 from app.services.openai_service import OpenAIService
@@ -412,6 +415,7 @@ def regenerate_post(
 @router.post("/{post_id}/generate-image", response_model=ImageResponse)
 async def generate_post_image(
     post_id: int,
+    request: ImageGenerateRequest = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -423,8 +427,15 @@ async def generate_post_image(
     if not post:
         raise HTTPException(status_code=404, detail="Post non trovato")
     
-    if not post.visual_suggestion:
-        raise HTTPException(status_code=400, detail="Nessun suggerimento visual disponibile")
+    # Usa visual_suggestion dal request body se fornito, altrimenti dal post
+    visual_prompt = (request.visual_suggestion if request and request.visual_suggestion else post.visual_suggestion)
+    
+    if not visual_prompt:
+        raise HTTPException(status_code=400, detail="Nessun suggerimento visual disponibile. Inserisci un prompt per generare l'immagine.")
+    
+    # Aggiorna il post con il nuovo visual_suggestion se fornito
+    if request and request.visual_suggestion:
+        post.visual_suggestion = request.visual_suggestion
     
     project = post.project
     brand = db.query(Brand).filter(Brand.id == project.brand_id).first()

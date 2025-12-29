@@ -133,7 +133,10 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+        },
+        body: JSON.stringify({
+          visual_suggestion: editedPost.visual_suggestion
+        })
       });
 
       if (!response.ok) {
@@ -154,6 +157,16 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     setMessage({ type: 'success', text: '📋 Copiato negli appunti!' });
+    setTimeout(() => setMessage(null), 2000);
+  };
+
+  const copyAll = () => {
+    const hashtags = editedPost.hashtagsText
+      ? editedPost.hashtagsText.split(',').map(h => `#${h.trim()}`).join(' ')
+      : '';
+    const fullContent = `${editedPost.content || ''}\n\n${hashtags}`.trim();
+    navigator.clipboard.writeText(fullContent);
+    setMessage({ type: 'success', text: '📋 Contenuto e hashtag copiati!' });
     setTimeout(() => setMessage(null), 2000);
   };
 
@@ -220,11 +233,16 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
                   className="w-full h-52 p-4 border-2 border-gray-200 rounded-xl focus:border-teal-500 focus:outline-none resize-none text-gray-800 leading-relaxed"
                   placeholder="Scrivi il contenuto del post..."
                 />
-                <div className="flex justify-between mt-2 text-sm text-gray-500">
+                <div className="flex justify-between items-center mt-2 text-sm text-gray-500">
                   <span>{editedPost.content?.length || 0} caratteri</span>
-                  <button onClick={() => copyToClipboard(editedPost.content)} className="text-teal-600 hover:text-teal-700 font-medium">
-                    📋 Copia contenuto
-                  </button>
+                  <div className="flex gap-3">
+                    <button onClick={() => copyToClipboard(editedPost.content)} className="text-teal-600 hover:text-teal-700 font-medium">
+                      📋 Copia contenuto
+                    </button>
+                    <button onClick={copyAll} className="text-purple-600 hover:text-purple-700 font-medium bg-purple-50 px-3 py-1 rounded-lg">
+                      📦 Copia tutto
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -309,7 +327,10 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
                 )}
               </button>
               {!editedPost.visual_suggestion && (
-                <p className="text-sm text-gray-500 text-center">💡 Inserisci un suggerimento visual per abilitare la generazione immagine</p>
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                  <p className="text-red-600 font-medium">❌ Nessun suggerimento visual disponibile</p>
+                  <p className="text-sm text-gray-500 mt-1">Inserisci un prompt nel campo sopra per generare un'immagine</p>
+                </div>
               )}
             </div>
           )}
