@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { posts as postsApi, projects as projectsApi, generation } from '../services/api';
 import PostEditModal from '../components/PostEditModal';
+import BrandDocuments from '../components/BrandDocuments';
 
 import GenerationProgress from '../components/GenerationProgress';
 const PLATFORMS = [
@@ -129,12 +130,62 @@ export default function ProjectDetail() {
         competitors: projectRes.data.competitors || [],
         custom_prompt: projectRes.data.custom_prompt || ''
       });
+      
+      // Carica connessioni social
+      if (projectRes.data.brand_id) {
+        loadSocialConnections(projectRes.data.brand_id);
+      }
     } catch (error) {
       console.error('Error loading project:', error);
     }
     setLoading(false);
   };
 
+
+  const loadSocialConnections = async (brandId) => {
+    if (!brandId) return;
+    setLoadingConnections(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/social/connections/${brandId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSocialConnections(data);
+      }
+    } catch (error) {
+      console.error('Error loading social connections:', error);
+    }
+    setLoadingConnections(false);
+  };
+
+  const connectSocial = (platform) => {
+    if (!project?.brand_id) return;
+    window.location.href = `/api/social/authorize/${platform}?brand_id=${project.brand_id}`;
+  };
+
+  const disconnectSocial = async (connectionId) => {
+    if (!window.confirm('Vuoi disconnettere questo account social?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`/api/social/disconnect/${connectionId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      loadSocialConnections(project.brand_id);
+    } catch (error) {
+      console.error('Error disconnecting:', error);
+    }
+  };
+
+  const isConnected = (platformId) => {
+    return socialConnections.some(c => c.platform === platformId && c.is_active);
+  };
+
+  const getConnection = (platformId) => {
+    return socialConnections.find(c => c.platform === platformId && c.is_active);
+  };
   const handleRegeneratePersonas = async () => {
     if (!window.confirm("Vuoi rigenerare le buyer personas? Le attuali verranno sostituite.")) return;
     setIsRegeneratingPersonas(true);
@@ -972,6 +1023,11 @@ export default function ProjectDetail() {
                     </div>
                   ))}
                 </div>
+              </section>
+
+              {/* Knowledge Base - Documenti Brand */}
+              <section className="bg-gray-50 rounded-xl p-6">
+                <BrandDocuments brandId={project?.brand_id} />
               </section>
               
               {/* Content Pillars */}

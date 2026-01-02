@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Import persona analyzer
 from app.services.persona_analyzer import analyze_buyer_personas, get_scheduling_for_platform, get_default_personas
+from app.services.rag_service import rag_service
 
 DEFAULT_STYLE_GUIDE = """
 LINEE GUIDA CONTENUTI:
@@ -31,13 +32,27 @@ async def generate_calendar_posts(
     themes: list = None,
     url_context: str = None,
     style_guide: str = None,
-    buyer_personas: dict = None
+    buyer_personas: dict = None,
+    brand_id: int = None,
+    db = None
 ) -> tuple[list, dict]:
     """
     Genera post per il calendario editoriale.
     Returns: (posts_list, personas_data)
     """
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    
+    # STEP 0: Recupera contesto dalla Knowledge Base (RAG)
+    rag_context = ""
+    if brand_id and db:
+        try:
+            # Cerca contesto rilevante basato su brief e temi
+            search_query = f"{brand_name} {project_info.get('brief', '')} {' '.join(themes or [])}"
+            rag_context = rag_service.get_context_for_generation(db, brand_id, search_query, max_tokens=3000)
+            if rag_context:
+                logger.info(f"[RAG] Found relevant context from documents ({len(rag_context)} chars)")
+        except Exception as e:
+            logger.warning(f"[RAG] Error getting context: {e}")
     
     # STEP 1: Analizza/genera buyer personas se non fornite
     if not buyer_personas:
@@ -82,6 +97,7 @@ async def generate_calendar_posts(
             posts_per_week=posts_per_week,
             themes=themes,
             url_context=url_context,
+            rag_context=rag_context,
             style_guide=style_guide or DEFAULT_STYLE_GUIDE,
             buyer_personas=buyer_personas,
             batch_num=batch_num + 1,
@@ -110,6 +126,7 @@ async def generate_batch(
     posts_per_week: dict,
     themes: list,
     url_context: str,
+    rag_context: str,
     style_guide: str,
     buyer_personas: dict,
     batch_num: int,
@@ -131,6 +148,9 @@ Valori: {brand_info.get('brand_values', [])}
 
 ## CONTESTO DAL SITO
 {url_context or 'Non disponibile'}
+
+## KNOWLEDGE BASE AZIENDALE
+{rag_context or 'Non disponibile'}
 
 ## BUYER PERSONAS
 {format_personas_for_prompt(buyer_personas)}

@@ -291,7 +291,9 @@ def run_generation(project_id: int):
                 themes=themes,
                 url_context=url_context,
                 style_guide=brand.style_guide,
-                buyer_personas=buyer_personas
+                buyer_personas=buyer_personas,
+                brand_id=brand.id,
+                db=db
             )
         )
         loop.close()

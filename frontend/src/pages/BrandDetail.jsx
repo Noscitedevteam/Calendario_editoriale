@@ -41,7 +41,7 @@ export default function BrandDetail() {
               <h1 className="text-2xl font-bold text-[#2C3E50]">{brand.name}</h1>
               <p className="text-sm text-gray-500">{brand.sector} • {brand.tone_of_voice}</p>
             </div>
-            <button className="text-gray-400 hover:text-[#3DAFA8]">
+            <button className="hidden">
               <Settings size={20} />
             </button>
           </div>
