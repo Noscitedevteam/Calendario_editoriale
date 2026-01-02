@@ -24,4 +24,7 @@ class Post(Base):
     status = Column(String(20), default="draft")
     created_at = Column(DateTime, server_default=func.now())
     
+    publication_status = Column(String(50), default="draft")
+    
     project = relationship("Project", back_populates="posts")
+    publications = relationship("PostPublication", back_populates="post", cascade="all, delete-orphan")

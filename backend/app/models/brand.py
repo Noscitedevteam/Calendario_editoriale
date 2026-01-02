@@ -27,3 +27,4 @@ class Brand(Base):
     
     organization = relationship("Organization", back_populates="brands")
     projects = relationship("Project", back_populates="brand", cascade="all, delete-orphan")
+    social_connections = relationship("SocialConnection", back_populates="brand", cascade="all, delete-orphan")
