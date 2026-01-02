@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
-from datetime import date
+from datetime import date, datetime
 
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -464,3 +464,157 @@ async def generate_post_image(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore generazione immagine: {str(e)}")
+
+
+# === SCHEDULING ENDPOINTS ===
+
+class ScheduleRequest(BaseModel):
+    scheduled_for: datetime
+    platforms: List[str]
+
+class ScheduleResponse(BaseModel):
+    message: str
+    scheduled_for: datetime
+    platforms: List[str]
+
+@router.post("/{post_id}/schedule", response_model=ScheduleResponse)
+async def schedule_post(
+    post_id: int,
+    request: ScheduleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Schedula un post per la pubblicazione automatica"""
+    from app.models.social_connection import SocialConnection, PostPublication
+    
+    # Verifica post
+    post = db.query(Post).join(Project).join(Brand).filter(
+        Post.id == post_id,
+        Brand.organization_id == current_user.organization_id
+    ).first()
+    
+    if not post:
+        raise HTTPException(status_code=404, detail="Post non trovato")
+    
+    project = post.project
+    brand = db.query(Brand).filter(Brand.id == project.brand_id).first()
+    
+    scheduled_platforms = []
+    
+    for platform in request.platforms:
+        # Verifica connessione attiva per la piattaforma
+        connection = db.query(SocialConnection).filter(
+            SocialConnection.brand_id == brand.id,
+            SocialConnection.platform == platform,
+            SocialConnection.is_active == True
+        ).first()
+        
+        if not connection:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Nessuna connessione attiva per {platform}. Connetti prima l'account nelle impostazioni."
+            )
+        
+        # Verifica se esiste già una pubblicazione per questo post/connessione
+        existing = db.query(PostPublication).filter(
+            PostPublication.post_id == post_id,
+            PostPublication.social_connection_id == connection.id
+        ).first()
+        
+        if existing:
+            # Aggiorna schedulazione esistente
+            existing.scheduled_for = request.scheduled_for
+            existing.status = "scheduled"
+            existing.error_message = None
+            existing.retry_count = 0
+        else:
+            # Crea nuova pubblicazione
+            publication = PostPublication(
+                post_id=post_id,
+                social_connection_id=connection.id,
+                status="scheduled",
+                scheduled_for=request.scheduled_for
+            )
+            db.add(publication)
+        
+        scheduled_platforms.append(platform)
+    
+    # Aggiorna stato post
+    post.publication_status = "scheduled"
+    db.commit()
+    
+    return {
+        "message": "Post pianificato con successo",
+        "scheduled_for": request.scheduled_for,
+        "platforms": scheduled_platforms
+    }
+
+@router.delete("/{post_id}/schedule")
+async def cancel_schedule(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Annulla la schedulazione di un post"""
+    from app.models.social_connection import PostPublication
+    
+    post = db.query(Post).join(Project).join(Brand).filter(
+        Post.id == post_id,
+        Brand.organization_id == current_user.organization_id
+    ).first()
+    
+    if not post:
+        raise HTTPException(status_code=404, detail="Post non trovato")
+    
+    # Rimuovi tutte le pubblicazioni schedulate
+    db.query(PostPublication).filter(
+        PostPublication.post_id == post_id,
+        PostPublication.status == "scheduled"
+    ).delete()
+    
+    post.publication_status = "draft"
+    db.commit()
+    
+    return {"message": "Schedulazione annullata"}
+
+@router.get("/{post_id}/schedule-status")
+async def get_schedule_status(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Ottieni stato schedulazione di un post"""
+    from app.models.social_connection import SocialConnection, PostPublication
+    
+    post = db.query(Post).join(Project).join(Brand).filter(
+        Post.id == post_id,
+        Brand.organization_id == current_user.organization_id
+    ).first()
+    
+    if not post:
+        raise HTTPException(status_code=404, detail="Post non trovato")
+    
+    publications = db.query(PostPublication).filter(
+        PostPublication.post_id == post_id
+    ).all()
+    
+    result = []
+    for pub in publications:
+        connection = db.query(SocialConnection).filter(
+            SocialConnection.id == pub.social_connection_id
+        ).first()
+        
+        result.append({
+            "platform": connection.platform if connection else "unknown",
+            "status": pub.status,
+            "scheduled_for": pub.scheduled_for,
+            "published_at": pub.published_at,
+            "external_post_url": pub.external_post_url,
+            "error_message": pub.error_message
+        })
+    
+    return {
+        "post_id": post_id,
+        "publication_status": post.publication_status,
+        "publications": result
+    }

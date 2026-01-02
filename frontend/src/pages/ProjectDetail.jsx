@@ -90,6 +90,10 @@ export default function ProjectDetail() {
   const [regeneratingPersonaIndex, setRegeneratingPersonaIndex] = useState(null);
   const [deletingPersonaIndex, setDeletingPersonaIndex] = useState(null);
   const [isAddingPersona, setIsAddingPersona] = useState(false);
+  
+  // Social connections
+  const [socialConnections, setSocialConnections] = useState([]);
+  const [loadingConnections, setLoadingConnections] = useState(false);
 
   // Load data
   useEffect(() => {
@@ -920,23 +924,49 @@ export default function ProjectDetail() {
                       </div>
                       
                       {settingsForm.platforms.includes(platform.id) && (
-                        <div>
-                          <label className="text-xs text-gray-500">Post/sett</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="14"
-                            value={settingsForm.posts_per_week[platform.id] || 3}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              updateSettingsForm('posts_per_week', {
-                                ...settingsForm.posts_per_week,
-                                [platform.id]: parseInt(e.target.value) || 1
-                              });
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-full mt-1 px-2 py-1 border rounded text-sm"
-                          />
+                        <div className="space-y-2">
+                          <div>
+                            <label className="text-xs text-gray-500">Post/sett</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="14"
+                              value={settingsForm.posts_per_week[platform.id] || 3}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                updateSettingsForm('posts_per_week', {
+                                  ...settingsForm.posts_per_week,
+                                  [platform.id]: parseInt(e.target.value) || 1
+                                });
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full mt-1 px-2 py-1 border rounded text-sm"
+                            />
+                          </div>
+                          
+                          {/* Stato connessione social */}
+                          <div onClick={(e) => e.stopPropagation()} className="pt-2 border-t border-gray-100">
+                            {isConnected(platform.id) ? (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-green-600 flex items-center gap-1">
+                                  <Check size={12} /> Connesso
+                                </span>
+                                <button
+                                  onClick={() => disconnectSocial(getConnection(platform.id)?.id)}
+                                  className="text-xs text-red-500 hover:text-red-700"
+                                >
+                                  Disconnetti
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => connectSocial(platform.id)}
+                                className="w-full text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                              >
+                                <Link size={12} /> Connetti
+                              </button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

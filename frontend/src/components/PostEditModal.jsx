@@ -25,6 +25,8 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [showScheduleOptions, setShowScheduleOptions] = useState(false);
   const [activeTab, setActiveTab] = useState('content');
   const [message, setMessage] = useState(null);
 
@@ -168,6 +170,67 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
     navigator.clipboard.writeText(fullContent);
     setMessage({ type: 'success', text: '📋 Contenuto e hashtag copiati!' });
     setTimeout(() => setMessage(null), 2000);
+  };
+  
+  const handleSchedule = async () => {
+    setIsScheduling(true);
+    setMessage(null);
+    try {
+      // Prima salva le modifiche
+      const hashtagsArray = editedPost.hashtagsText
+        .split(',')
+        .map(h => h.trim().replace(/^#/, ''))
+        .filter(h => h.length > 0);
+      
+      await fetch(`${API_URL}/api/posts/${editedPost.id}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          content: editedPost.content,
+          hashtags: hashtagsArray,
+          scheduled_time: editedPost.scheduled_time,
+          scheduled_date: editedPost.scheduled_date,
+          visual_suggestion: editedPost.visual_suggestion,
+          cta: editedPost.cta,
+          pillar: editedPost.pillar,
+          publication_status: 'scheduled'
+        })
+      });
+      
+      // Poi schedula la pubblicazione
+      const scheduledDateTime = `${editedPost.scheduled_date}T${editedPost.scheduled_time || '09:00'}:00`;
+      const response = await fetch(`${API_URL}/api/posts/${editedPost.id}/schedule`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          scheduled_for: scheduledDateTime,
+          platforms: [editedPost.platform]
+        })
+      });
+      
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Errore nella pianificazione');
+      }
+      
+      setMessage({ type: 'success', text: '📅 Post pianificato per la pubblicazione!' });
+      setShowScheduleOptions(false);
+      
+      setTimeout(() => {
+        if (onSave) onSave({ ...editedPost, publication_status: 'scheduled' });
+        onClose();
+      }, 1500);
+    } catch (error) {
+      setMessage({ type: 'error', text: '❌ ' + error.message });
+    } finally {
+      setIsScheduling(false);
+    }
   };
 
   return (
@@ -401,6 +464,23 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
           </button>
           
           <div className="flex-1"></div>
+          
+          {/* Bottone Pianifica */}
+          <button
+            onClick={handleSchedule}
+            disabled={isScheduling}
+            className={`px-5 py-2.5 rounded-xl font-semibold flex items-center gap-2 transition-all ${
+              isScheduling 
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                : 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-md hover:shadow-lg'
+            }`}
+          >
+            {isScheduling ? (
+              <><span className="animate-spin">⏳</span> Pianificazione...</>
+            ) : (
+              <>📅 Pianifica</>
+            )}
+          </button>
           
           <button
             onClick={onClose}
