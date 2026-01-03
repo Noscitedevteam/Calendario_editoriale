@@ -7,6 +7,7 @@ import anthropic
 import json
 import os
 import logging
+from app.services.perplexity_scheduling_research import research_optimal_schedule
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -232,6 +233,51 @@ async def analyze_buyer_personas(
         personas_data["source"] = "ai_analysis"
         
         logger.info(f"[PERSONA] Generated {len(personas_data.get('personas', []))} personas")
+        
+        # STEP 2: Arricchisci scheduling con Perplexity
+        if platforms:
+            logger.info("[PERSONA] Enriching schedule with Perplexity research...")
+            try:
+                # Determina B2B o B2C
+                business_type = "B2B" if sector and any(x in sector.lower() for x in ["b2b", "business", "consulenza", "servizi professionali", "enterprise"]) else "B2C"
+                
+                # Ricerca per ogni piattaforma
+                for platform in platforms:
+                    # Usa la prima persona come riferimento
+                    persona = personas_data.get("personas", [{}])[0]
+                    persona_desc = f"{persona.get('name', '')} - {persona.get('demographics', {}).get('role', '')}"
+                    
+                    perplexity_schedule = await research_optimal_schedule(
+                        business_type=business_type,
+                        sector=sector or "generico",
+                        platform=platform,
+                        buyer_persona=persona_desc,
+                        country="Italia"
+                    )
+                    
+                    # Aggiorna scheduling_strategy con dati Perplexity
+                    if perplexity_schedule.get("source") == "perplexity":
+                        if "scheduling_strategy" not in personas_data:
+                            personas_data["scheduling_strategy"] = {}
+                        if platform not in personas_data["scheduling_strategy"]:
+                            personas_data["scheduling_strategy"][platform] = {}
+                        
+                        personas_data["scheduling_strategy"][platform]["perplexity_data"] = perplexity_schedule
+                        
+                        # Crea optimal_slots dai dati Perplexity
+                        best_days = perplexity_schedule.get("best_days_numbers", [1, 3])
+                        best_times = perplexity_schedule.get("best_times", ["10:00", "14:00"])
+                        
+                        slots = []
+                        for i, day in enumerate(best_days):
+                            time = best_times[i] if i < len(best_times) else best_times[0]
+                            slots.append({"day": day, "time": time, "priority": i + 1})
+                        
+                        personas_data["scheduling_strategy"][platform]["optimal_slots"] = slots
+                        
+                logger.info("[PERSONA] Perplexity enrichment completed")
+            except Exception as e:
+                logger.warning(f"[PERSONA] Perplexity enrichment failed: {e}")
         
         return personas_data
         

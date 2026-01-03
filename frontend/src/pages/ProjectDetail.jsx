@@ -276,7 +276,7 @@ export default function ProjectDetail() {
   };
 
   const getPostsForDate = (date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     return postsList.filter(post => {
       const postDate = post.scheduled_date?.split('T')[0];
       const platformMatch = selectedPlatform === 'all' || post.platform === selectedPlatform;

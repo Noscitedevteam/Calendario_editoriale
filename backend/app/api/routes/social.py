@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
+logger = logging.getLogger(__name__)
 from datetime import datetime, timezone, timedelta
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -123,7 +125,7 @@ async def authorize_social(
             "client_id": settings.META_APP_ID,
             "redirect_uri": f"{settings.BASE_URL}/api/social/callback/instagram",
             "state": state,
-            "scope": "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement",
+            "scope": "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,pages_manage_posts,business_management",
             "response_type": "code"
         }
         auth_url = f"https://www.facebook.com/v18.0/dialog/oauth?{urlencode(params)}"
@@ -173,19 +175,25 @@ async def facebook_callback(
     try:
         # Scambia code per access_token
         async with httpx.AsyncClient() as client:
-            token_response = await client.get(
-                "https://graph.facebook.com/v18.0/oauth/access_token",
-                params={
+            token_params = {
                     "client_id": settings.META_APP_ID,
                     "client_secret": settings.META_APP_SECRET,
                     "redirect_uri": f"{settings.BASE_URL}/api/social/callback/facebook",
                     "code": code
                 }
+            logger.info(f"Facebook token request params: {token_params}")
+            token_response = await client.get(
+                "https://graph.facebook.com/v18.0/oauth/access_token",
+                params=token_params
             )
+            logger.info(f"Facebook response status: {token_response.status_code}")
+            logger.info(f"Facebook response body: {token_response.text}")
             token_data = token_response.json()
+            logger.info(f"Facebook token response: {token_response.status_code} - {token_data}")
             
             if "error" in token_data:
-                return RedirectResponse(f"{settings.FRONTEND_URL}?social_error={token_data['error']['message']}")
+                logger.error(f"Facebook token error: {token_data}")
+                return RedirectResponse(f"{settings.FRONTEND_URL}?social_error={token_data['error'].get('message', 'unknown')}")
             
             access_token = token_data["access_token"]
             
@@ -386,9 +394,111 @@ async def instagram_callback(
     error: str = None,
     db: Session = Depends(get_db)
 ):
-    """Callback OAuth Instagram (via Facebook)"""
-    # Instagram usa lo stesso flusso di Facebook
-    return await facebook_callback(code, state, error, db)
+    """Callback OAuth Instagram (via Facebook Graph API)"""
+    if error or not code or not state:
+        return RedirectResponse(f"{settings.FRONTEND_URL}?social_error={error or 'missing_code'}")
+    
+    # Verifica state
+    state_data = oauth_states.pop(state, None)
+    if not state_data:
+        return RedirectResponse(f"{settings.FRONTEND_URL}?social_error=invalid_state")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # Scambia code per access_token - USA IL REDIRECT_URI DI INSTAGRAM!
+            token_response = await client.get(
+                "https://graph.facebook.com/v18.0/oauth/access_token",
+                params={
+                    "client_id": settings.META_APP_ID,
+                    "client_secret": settings.META_APP_SECRET,
+                    "redirect_uri": f"{settings.BASE_URL}/api/social/callback/instagram",
+                    "code": code
+                }
+            )
+            token_data = token_response.json()
+            
+            if "error" in token_data:
+                logger.error(f"Instagram token error: {token_data}")
+                return RedirectResponse(f"{settings.FRONTEND_URL}?social_error={token_data['error'].get('message', 'token_error')}")
+            
+            access_token = token_data["access_token"]
+            
+            # Ottieni pagine Facebook collegate
+            pages_response = await client.get(
+                "https://graph.facebook.com/v18.0/me/accounts",
+                params={"access_token": access_token}
+            )
+            pages_data = pages_response.json()
+            logger.info(f"Instagram - Pages found: {len(pages_data.get('data', []))}")
+            
+            if not pages_data.get("data"):
+                logger.error("Instagram - No Facebook pages found")
+                return RedirectResponse(f"{settings.FRONTEND_URL}?social_error=no_pages_found")
+            
+            # Per ogni pagina, cerca account Instagram collegato
+            instagram_account = None
+            page_access_token = None
+            
+            for page in pages_data["data"]:
+                logger.info(f"Instagram - Checking page: {page.get('name', 'unknown')} (ID: {page['id']})")
+                ig_response = await client.get(
+                    f"https://graph.facebook.com/v18.0/{page['id']}",
+                    params={
+                        "access_token": page["access_token"],
+                        "fields": "instagram_business_account"
+                    }
+                )
+                ig_data = ig_response.json()
+                logger.info(f"Instagram - Page IG data: {ig_data}")
+                
+                if ig_data.get("instagram_business_account"):
+                    instagram_account = ig_data["instagram_business_account"]["id"]
+                    page_access_token = page["access_token"]
+                    logger.info(f"Instagram - Found IG business account: {instagram_account}")
+                    break
+            
+            if not instagram_account:
+                logger.error("Instagram - No Instagram business account linked to any Facebook page")
+                return RedirectResponse(f"{settings.FRONTEND_URL}?social_error=no_instagram_business_account")
+            
+            # Ottieni info account Instagram
+            ig_info_response = await client.get(
+                f"https://graph.facebook.com/v18.0/{instagram_account}",
+                params={
+                    "access_token": page_access_token,
+                    "fields": "id,username"
+                }
+            )
+            ig_info = ig_info_response.json()
+            
+            # Salva connessione
+            brand_id = state_data["brand_id"]
+            user_id = state_data["user_id"]
+            
+            # Rimuovi connessioni Instagram esistenti per questo brand
+            db.query(SocialConnection).filter(
+                SocialConnection.brand_id == brand_id,
+                SocialConnection.platform == "instagram"
+            ).delete()
+            
+            connection = SocialConnection(
+                brand_id=brand_id,
+                connected_by_user_id=user_id,
+                platform="instagram",
+                external_account_id=instagram_account,
+                access_token=page_access_token,
+                account_type="business",
+                is_active=True
+            )
+            db.add(connection)
+            db.commit()
+            
+            logger.info(f"Instagram connected: {ig_info.get('username')} for brand {brand_id}")
+            return RedirectResponse(f"{settings.FRONTEND_URL}/?social_connected=instagram")
+            
+    except Exception as e:
+        logger.error(f"Instagram callback error: {e}")
+        return RedirectResponse(f"{settings.FRONTEND_URL}?social_error=callback_failed")
 
 @router.delete("/disconnect/{connection_id}")
 async def disconnect_social(

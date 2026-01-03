@@ -410,6 +410,9 @@ def get_generation_status(
         if post_count > 0:
             expected = sum(project.posts_per_week.values()) * (total_days / 7) if project.posts_per_week else 10
             percent = min(95, int((post_count / max(expected, 1)) * 100))
+            # Stima current_batch basato sulla percentuale
+            current_batch = max(1, int((percent / 100) * total_batches) + 1)
+            current_batch = min(current_batch, total_batches)
     elif project.status == ProjectStatus.review:
         percent = 100
     
@@ -529,11 +532,11 @@ async def add_persona(
     # Genera una singola persona
     new_persona_data = await analyze_buyer_personas(
         brand_name=brand.name,
-        brand_description=brand.description or "",
-        industry=brand.industry or "",
+        description=brand.description or "",
+        sector=brand.sector or "",
         target_audience=project.target_audience or "",
         platforms=project.platforms or [],
-        extra_context=extra_context + "\n\nRispondi con UNA SOLA persona nel campo 'personas'."
+        
     )
     
     # Aggiungi la nuova persona all'elenco esistente
@@ -630,11 +633,11 @@ Crea UNA SOLA persona completamente nuova e diversa dalla precedente.
     
     new_persona_data = await analyze_buyer_personas(
         brand_name=brand.name,
-        brand_description=brand.description or "",
-        industry=brand.industry or "",
+        description=brand.description or "",
+        sector=brand.sector or "",
         target_audience=project.target_audience or "",
         platforms=project.platforms or [],
-        extra_context=extra_context
+        
     )
     
     if new_persona_data.get("personas"):

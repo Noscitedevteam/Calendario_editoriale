@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
@@ -455,12 +455,12 @@ async def generate_post_image(
         # Dimensioni ottimali per piattaforma
         platform_sizes = {
             "instagram": "1024x1024",      # Feed quadrato
-            "instagram_story": "1024x1792", # Stories/Reels verticale
-            "linkedin": "1792x1024",        # Landscape professionale
-            "facebook": "1792x1024",        # Landscape engagement
+            "instagram_story": "1024x1024", # Stories/Reels verticale
+            "linkedin": "1024x1024",        # Landscape professionale
+            "facebook": "1024x1024",        # Landscape engagement
             "google_business": "1024x1024", # Quadrato per local
-            "twitter": "1792x1024",         # Landscape
-            "blog": "1792x1024"             # Header landscape
+            "twitter": "1024x1024",         # Landscape
+            "blog": "1024x1024"             # Header landscape
         }
         size = platform_sizes.get(post.platform, "1024x1024")
         openai_service = OpenAIService()
@@ -487,6 +487,7 @@ class ScheduleResponse(BaseModel):
     scheduled_for: datetime
     platforms: List[str]
 
+
 @router.post("/{post_id}/schedule", response_model=ScheduleResponse)
 async def schedule_post(
     post_id: int,
@@ -495,6 +496,9 @@ async def schedule_post(
     current_user: User = Depends(get_current_user)
 ):
     """Schedula un post per la pubblicazione automatica"""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Schedule request received: post_id={post_id}, request={request}")
     from app.models.social_connection import SocialConnection, PostPublication
     
     # Verifica post
@@ -628,3 +632,52 @@ async def get_schedule_status(
         "publication_status": post.publication_status,
         "publications": result
     }
+
+
+# === IMAGE UPLOAD ===
+from fastapi import UploadFile, File
+import os
+import uuid
+
+UPLOAD_DIR = "/var/www/noscite-calendar/backend/uploads/posts"
+
+@router.post("/{post_id}/upload-image", response_model=ImageResponse)
+async def upload_post_image(
+    post_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload immagine custom per un post"""
+    post = db.query(Post).join(Project).join(Brand).filter(
+        Post.id == post_id,
+        Brand.organization_id == current_user.organization_id
+    ).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post non trovato")
+    
+    # Valida file
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Tipo file non supportato. Usa JPG, PNG, WEBP o GIF.")
+    
+    # Genera nome univoco
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"{post_id}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    
+    # Salva file
+    try:
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        with open(filepath, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        
+        # Aggiorna post con URL immagine
+        image_url = f"/uploads/posts/{filename}"
+        post.image_url = image_url
+        db.commit()
+        
+        return {"image_url": image_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore upload: {str(e)}")

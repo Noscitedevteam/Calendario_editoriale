@@ -13,11 +13,30 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // Se 401 e non è già un retry, prova a refreshare
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      try {
+        // Prova a ottenere nuovo token con refresh
+        const refreshResponse = await api.post('/auth/refresh');
+        const newToken = refreshResponse.data.access_token;
+        
+        localStorage.setItem('token', newToken);
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Refresh fallito, vai al login
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
+      }
     }
+    
     return Promise.reject(error);
   }
 );

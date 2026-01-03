@@ -134,3 +134,13 @@ def change_password(
     db.commit()
     
     return {"message": "Password cambiata con successo"}
+
+
+@router.post("/refresh", response_model=Token)
+def refresh_token(current_user: User = Depends(get_current_user)):
+    """Refresh access token"""
+    access_token = create_access_token(
+        data={"sub": current_user.email},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    return {"access_token": access_token, "token_type": "bearer"}

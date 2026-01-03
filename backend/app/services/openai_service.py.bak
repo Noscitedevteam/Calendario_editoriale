@@ -17,7 +17,7 @@ class OpenAIService:
         # Enhance prompt for better results
         enhanced_prompt = f"""Professional social media visual: {prompt}
 Style: Modern, clean, professional, suitable for business social media.
-CRITICAL: Absolutely no text, no words, no letters, no numbers, no writing of any kind anywhere in the image. No watermarks, no logos."""
+No text overlays, no watermarks."""
         
         response = self.client.images.generate(
             model="dall-e-3",

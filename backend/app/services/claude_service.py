@@ -538,7 +538,7 @@ Colori: {brand_colors or 'Non specificati'}
 - Crea un prompt in inglese per DALL-E
 - Stile professionale e moderno
 - Adatto per {platform}
-- NO testo nell'immagine
+- IMPORTANTE: Nessun testo, nessuna scritta, nessuna parola, nessun numero nell'immagine
 - NO loghi o marchi
 - Formato: descrizione dettagliata in 1-2 frasi
 

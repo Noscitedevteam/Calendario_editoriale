@@ -25,6 +25,7 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
   const [showScheduleOptions, setShowScheduleOptions] = useState(false);
   const [activeTab, setActiveTab] = useState('content');
@@ -156,6 +157,39 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
     }
   };
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    setIsUploadingImage(true);
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch(`/api/posts/${editedPost.id}/upload-image`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Errore upload');
+      }
+      
+      const result = await response.json();
+      setEditedPost(prev => ({ ...prev, image_url: result.image_url }));
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Errore durante il caricamento: ' + error.message);
+    }
+    setIsUploadingImage(false);
+    e.target.value = ''; // Reset input
+  };
+
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     setMessage({ type: 'success', text: '📋 Copiato negli appunti!' });
@@ -201,7 +235,11 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
       });
       
       // Poi schedula la pubblicazione
-      const scheduledDateTime = `${editedPost.scheduled_date}T${editedPost.scheduled_time || '09:00'}:00`;
+      // Normalizza l'orario: se ha solo HH:MM aggiungi :00
+      const timeStr = editedPost.scheduled_time || '09:00';
+      const normalizedTime = timeStr.length === 5 ? timeStr + ':00' : timeStr.substring(0, 8);
+      const scheduledDateTime = `${editedPost.scheduled_date}T${normalizedTime}`;
+      console.log('DEBUG SCHEDULE:', { scheduledDateTime, platform: editedPost.platform, postId: editedPost.id });
       const response = await fetch(`${API_URL}/api/posts/${editedPost.id}/schedule`, {
         method: 'POST',
         headers: { 
@@ -389,6 +427,33 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
                   <>🎨 Genera Immagine con DALL-E</>
                 )}
               </button>
+              
+              {/* Upload immagine custom */}
+              <div className="relative">
+                <input
+                  type="file"
+                  id="image-upload"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="image-upload"
+                  className={`w-full py-3 px-4 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    isUploadingImage
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white hover:from-teal-600 hover:to-cyan-600 shadow-lg hover:shadow-xl'
+                  }`}
+                >
+                  {isUploadingImage ? (
+                    <>
+                      <span className="animate-spin">⏳</span> Caricamento in corso...
+                    </>
+                  ) : (
+                    <>📤 Carica Immagine Personalizzata</>
+                  )}
+                </label>
+              </div>
               {!editedPost.visual_suggestion && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
                   <p className="text-red-600 font-medium">❌ Nessun suggerimento visual disponibile</p>
