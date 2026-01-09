@@ -1,3 +1,4 @@
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -7,6 +8,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 import asyncio
 
 from app.core.database import get_db, SessionLocal
@@ -15,6 +17,7 @@ from app.models.post import Post
 from app.models.brand import Brand
 from app.models.user import User
 from app.services.claude_service import generate_calendar_posts
+from app.services.generation_tracker import update_generation_status, get_generation_status_cache, clear_generation_status
 from app.services.persona_analyzer import analyze_buyer_personas, get_default_personas
 from app.services.url_analyzer import get_brand_context_from_urls
 from app.api.routes.auth import get_current_user
@@ -297,6 +300,7 @@ def run_generation(project_id: int):
                 style_guide=brand.style_guide,
                 buyer_personas=buyer_personas,
                 brand_id=brand.id,
+                project_id=project_id,
                 db=db
             )
         )
@@ -307,9 +311,14 @@ def run_generation(project_id: int):
         # Reset any failed transaction
         db.rollback()
         
-        # Delete existing posts
-        deleted = db.query(Post).filter(Post.project_id == project_id).delete()
-        logger.info(f"[GEN] Deleted {deleted} existing posts")
+        # Delete only posts in the project date range (keep historical posts)
+        # Cancella solo nel range del progetto
+        deleted = db.query(Post).filter(
+            Post.project_id == project_id,
+            Post.scheduled_date >= project.start_date,
+            Post.scheduled_date <= project.end_date
+        ).delete()
+        logger.info(f"[GEN] Deleted {deleted} future posts (kept past posts)")
         
         # Save new posts
         for post_data in posts:
@@ -321,7 +330,8 @@ def run_generation(project_id: int):
                 content=post_data.get("content", ""),
                 hashtags=post_data.get("hashtags", []),
                 pillar=post_data.get("pillar", ""),
-                post_type=post_data.get("content_type", ""),
+                post_type=post_data.get("post_type", ""),
+                content_type=post_data.get("content_type", "post"),
                 visual_suggestion=post_data.get("visual_suggestion", ""),
                 cta=post_data.get("cta", "")
             )
@@ -404,17 +414,21 @@ def get_generation_status(
     total_batches = 0
     
     if project.status == ProjectStatus.generating:
-        # Stima basata su post count vs expected
-        total_days = (project.end_date - project.start_date).days + 1
-        total_batches = (total_days + 13) // 14
-        if post_count > 0:
-            expected = sum(project.posts_per_week.values()) * (total_days / 7) if project.posts_per_week else 10
-            percent = min(95, int((post_count / max(expected, 1)) * 100))
-            # Stima current_batch basato sulla percentuale
-            current_batch = max(1, int((percent / 100) * total_batches) + 1)
-            current_batch = min(current_batch, total_batches)
+        # Usa il cache per stato reale
+        cached = get_generation_status_cache(project_id)
+        if cached:
+            current_batch = cached["current_batch"]
+            total_batches = cached["total_batches"]
+            percent = cached["percent"]
+        else:
+            # Fallback: stima iniziale
+            total_days = (project.end_date - project.start_date).days + 1
+            total_batches = (total_days + 13) // 14
+            percent = 0
+            current_batch = 0
     elif project.status == ProjectStatus.review:
         percent = 100
+        clear_generation_status(project_id)
     
     return {
         "status": project.status.value if project.status else "draft",
@@ -656,3 +670,117 @@ Crea UNA SOLA persona completamente nuova e diversa dalla precedente.
         }
     
     raise HTTPException(status_code=500, detail="Errore nella rigenerazione della persona")
+
+
+@router.post("/check-overlap/{project_id}")
+def check_overlap(
+    project_id: int,
+    new_dates: dict,  # {"start_date": "2026-03-01", "end_date": "2026-03-31"}
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Verifica se ci sono post esistenti nel range di date specificato.
+    Ritorna info sui post che verranno sovrascritti.
+    """
+    from datetime import datetime
+    
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    start_date = datetime.strptime(new_dates["start_date"], "%Y-%m-%d").date()
+    end_date = datetime.strptime(new_dates["end_date"], "%Y-%m-%d").date()
+    
+    # Conta post esistenti nel range
+    overlapping_posts = db.query(Post).filter(
+        Post.project_id == project_id,
+        Post.scheduled_date >= start_date,
+        Post.scheduled_date <= end_date
+    ).all()
+    
+    # Raggruppa per piattaforma
+    by_platform = {}
+    for post in overlapping_posts:
+        plat = post.platform or "altro"
+        if plat not in by_platform:
+            by_platform[plat] = 0
+        by_platform[plat] += 1
+    
+    # Post fuori dal range (che verranno mantenuti)
+    kept_posts = db.query(Post).filter(
+        Post.project_id == project_id,
+        (Post.scheduled_date < start_date) | (Post.scheduled_date > end_date)
+    ).count()
+    
+    return {
+        "has_overlap": len(overlapping_posts) > 0,
+        "overlapping_count": len(overlapping_posts),
+        "overlapping_by_platform": by_platform,
+        "kept_count": kept_posts,
+        "date_range": {
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat()
+        },
+        "current_project_dates": {
+            "start": project.start_date.isoformat() if project.start_date else None,
+            "end": project.end_date.isoformat() if project.end_date else None
+        }
+    }
+
+
+@router.post("/check-overlap/{project_id}")
+def check_overlap(
+    project_id: int,
+    new_dates: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Verifica se ci sono post esistenti nel range di date specificato.
+    Ritorna info sui post che verranno sovrascritti.
+    """
+    from datetime import datetime
+    
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    start_date = datetime.strptime(new_dates["start_date"], "%Y-%m-%d").date()
+    end_date = datetime.strptime(new_dates["end_date"], "%Y-%m-%d").date()
+    
+    # Conta post esistenti nel range
+    overlapping_posts = db.query(Post).filter(
+        Post.project_id == project_id,
+        Post.scheduled_date >= start_date,
+        Post.scheduled_date <= end_date
+    ).all()
+    
+    # Raggruppa per piattaforma
+    by_platform = {}
+    for post in overlapping_posts:
+        plat = post.platform or "altro"
+        if plat not in by_platform:
+            by_platform[plat] = 0
+        by_platform[plat] += 1
+    
+    # Post fuori dal range (che verranno mantenuti)
+    kept_posts = db.query(Post).filter(
+        Post.project_id == project_id,
+        ((Post.scheduled_date < start_date) | (Post.scheduled_date > end_date))
+    ).count()
+    
+    return {
+        "has_overlap": len(overlapping_posts) > 0,
+        "overlapping_count": len(overlapping_posts),
+        "overlapping_by_platform": by_platform,
+        "kept_count": kept_posts,
+        "date_range": {
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat()
+        },
+        "current_project_dates": {
+            "start": project.start_date.isoformat() if project.start_date else None,
+            "end": project.end_date.isoformat() if project.end_date else None
+        }
+    }

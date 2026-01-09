@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, ForeignKey, JSON, Text, DateTime
+from sqlalchemy import Column, Integer, String, Date, ForeignKey, JSON, Text, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -22,6 +22,10 @@ class Post(Base):
     image_prompt = Column(Text)
     image_url = Column(Text)
     media_type = Column(String(20), default="image")  # image, video
+    image_format = Column(String(20), default="1080x1080")  # 1080x1080, 1080x1920, 1920x1080
+    carousel_images = Column(JSON, default=list)  # Array URL per carosello
+    carousel_prompts = Column(JSON, default=list)  # Array prompt per carosello
+    is_carousel = Column(Boolean, default=False)
     content_type = Column(String(20), default="post")  # post, story, reel
     status = Column(String(20), default="draft")
     created_at = Column(DateTime, server_default=func.now())

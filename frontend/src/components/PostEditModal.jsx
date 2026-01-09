@@ -27,6 +27,10 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [imageFormat, setImageFormat] = useState('1080x1080');
+  const [isCarousel, setIsCarousel] = useState(false);
+  const [numSlides, setNumSlides] = useState(3);
+  const [carouselImages, setCarouselImages] = useState([]);
   const [isScheduling, setIsScheduling] = useState(false);
   const [showScheduleOptions, setShowScheduleOptions] = useState(false);
   const [activeTab, setActiveTab] = useState('content');
@@ -327,7 +331,7 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
           <div className="flex justify-between items-start">
             <div>
               <h2 className="text-xl font-bold">
-                ✏️ Modifica Post - {format(parseISO(editedPost.scheduled_date), "EEEE d MMMM yyyy", { locale: it })}
+                ✏️ Modifica Contenuto - {format(parseISO(editedPost.scheduled_date), "EEEE d MMMM yyyy", { locale: it })}
               </h2>
               <div className="flex items-center gap-3 mt-2">
                 <span className={`${platformColors[editedPost.platform]} text-white px-3 py-1 rounded text-sm font-semibold capitalize`}>
@@ -504,6 +508,81 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
                 </div>
               )}
 
+              {/* Formato Immagine */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-3">📐 Formato Immagine</label>
+                <div className="flex gap-2 flex-wrap">
+                  {[
+                    { value: '1080x1080', label: '⬜ Quadrato', desc: 'Feed' },
+                    { value: '1080x1920', label: '📱 Verticale', desc: 'Story/Reel' },
+                    { value: '1920x1080', label: '🖥️ Orizzontale', desc: 'Cover' }
+                  ].map(fmt => (
+                    <button
+                      key={fmt.value}
+                      type="button"
+                      onClick={() => setImageFormat(fmt.value)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all flex flex-col items-center ${
+                        imageFormat === fmt.value
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
+                          : 'bg-white text-gray-600 hover:bg-gray-100 border'
+                      }`}
+                    >
+                      <span>{fmt.label}</span>
+                      <span className="text-xs opacity-75">{fmt.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Carosello */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-sm font-semibold text-gray-700">🎠 Carosello (più immagini)</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCarousel(!isCarousel)}
+                    className={`relative w-14 h-7 rounded-full transition-colors ${
+                      isCarousel ? 'bg-purple-500' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-transform shadow ${
+                      isCarousel ? 'translate-x-8' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </div>
+                {isCarousel && (
+                  <div className="mt-3">
+                    <label className="block text-sm text-gray-600 mb-2">Numero di slide: {numSlides}</label>
+                    <input
+                      type="range"
+                      min="2"
+                      max="5"
+                      value={numSlides}
+                      onChange={(e) => setNumSlides(parseInt(e.target.value))}
+                      className="w-full accent-purple-500"
+                    />
+                    <div className="flex justify-between text-xs text-gray-400 mt-1">
+                      <span>2</span>
+                      <span>3</span>
+                      <span>4</span>
+                      <span>5</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Mostra immagini carosello se presenti */}
+              {carouselImages.length > 0 && (
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">🖼️ Immagini Carosello</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {carouselImages.map((img, idx) => (
+                      <img key={idx} src={img} alt={`Slide ${idx+1}`} className="rounded-lg shadow-sm" />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <button
                 onClick={handleGenerateImage}
                 disabled={isGeneratingImage || !editedPost.visual_suggestion}
@@ -515,10 +594,10 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
               >
                 {isGeneratingImage ? (
                   <>
-                    <span className="animate-spin">⏳</span> Generazione immagine in corso...
+                    <span className="animate-spin">⏳</span> Generazione {isCarousel ? `${numSlides} immagini` : 'immagine'} in corso...
                   </>
                 ) : (
-                  <>🎨 Genera Immagine con DALL-E</>
+                  <>{isCarousel ? `🎠 Genera Carosello (${numSlides} immagini)` : '🎨 Genera Immagine con DALL-E'}</>
                 )}
               </button>
               

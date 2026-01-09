@@ -21,6 +21,7 @@ const platformIcons = {
 
 export default function CalendarGridView({ posts, onPostsUpdate, apiUrl }) {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [expandedDay, setExpandedDay] = useState(null);
   const [selectedPost, setSelectedPost] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -168,7 +169,7 @@ export default function CalendarGridView({ posts, onPostsUpdate, apiUrl }) {
                   {format(date, 'd')}
                 </div>
                 <div className="space-y-1">
-                  {dayPosts.slice(0, 4).map((post, i) => (
+                  {(expandedDay === dateStr ? dayPosts : dayPosts.slice(0, 4)).map((post, i) => (
                     <div
                       key={post.id || i}
                       onClick={() => openEditModal(post)}
@@ -177,9 +178,20 @@ export default function CalendarGridView({ posts, onPostsUpdate, apiUrl }) {
                       {post.publication_status === 'scheduled' && '📅 '}{post.publication_status === 'published' && '✅ '}{platformIcons[post.platform]} {post.scheduled_time?.slice(0,5)} {post.pillar?.slice(0, 12)}
                     </div>
                   ))}
-                  {dayPosts.length > 4 && (
-                    <div className="text-xs text-gray-500 text-center">
-                      +{dayPosts.length - 4} altri
+                  {dayPosts.length > 4 && expandedDay !== dateStr && (
+                    <div 
+                      className="text-xs text-teal-600 text-center cursor-pointer hover:text-teal-800 font-medium"
+                      onClick={() => setExpandedDay(dateStr)}
+                    >
+                      +{dayPosts.length - 4} altri ▼
+                    </div>
+                  )}
+                  {expandedDay === dateStr && dayPosts.length > 4 && (
+                    <div 
+                      className="text-xs text-gray-500 text-center cursor-pointer hover:text-gray-700"
+                      onClick={() => setExpandedDay(null)}
+                    >
+                      ▲ Riduci
                     </div>
                   )}
                 </div>
@@ -201,3 +213,4 @@ export default function CalendarGridView({ posts, onPostsUpdate, apiUrl }) {
     </div>
   );
 }
+// rebuild Fri Jan  9 19:25:39 CET 2026

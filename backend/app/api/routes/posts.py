@@ -764,3 +764,178 @@ async def upload_post_image(
         return {"image_url": image_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore upload: {str(e)}")
+
+
+# === CAROUSEL & MULTI-FORMAT IMAGE GENERATION ===
+
+class CarouselImageRequest(BaseModel):
+    visual_suggestion: str
+    image_format: str = "1080x1080"  # 1080x1080, 1080x1920, 1920x1080
+    is_carousel: bool = False
+    num_slides: int = 1  # 1-5 per carosello
+
+class CarouselImageResponse(BaseModel):
+    images: List[str]
+    prompts: List[str]
+    image_format: str
+    is_carousel: bool
+
+@router.post("/{post_id}/generate-carousel", response_model=CarouselImageResponse)
+async def generate_carousel_images(
+    post_id: int,
+    request: CarouselImageRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Genera immagini singole o carosello con formati multipli"""
+    import anthropic
+    import httpx
+    import uuid
+    import base64
+    import os
+    
+    post = db.query(Post).join(Project).join(Brand).filter(
+        Post.id == post_id,
+        Brand.organization_id == current_user.organization_id
+    ).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post non trovato")
+    
+    project = post.project
+    brand = db.query(Brand).filter(Brand.id == project.brand_id).first()
+    
+    # Mappa formati a dimensioni DALL-E
+    format_to_dalle = {
+        "1080x1080": "1024x1024",
+        "1080x1920": "1024x1792",  # Verticale (story/reel)
+        "1920x1080": "1792x1024"   # Orizzontale (landscape)
+    }
+    dalle_size = format_to_dalle.get(request.image_format, "1024x1024")
+    
+    num_images = min(max(request.num_slides, 1), 5) if request.is_carousel else 1
+    
+    # Genera prompt per ogni slide con Claude
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    
+    if request.is_carousel and num_images > 1:
+        # Chiedi a Claude di generare prompt per ogni slide
+        carousel_prompt = f"""Genera {num_images} prompt DALL-E per un carosello Instagram.
+
+CONTENUTO POST:
+{post.content}
+
+SUGGERIMENTO VISUAL:
+{request.visual_suggestion}
+
+BRAND: {brand.name if brand else 'N/A'}
+SETTORE: {brand.sector if brand else 'N/A'}
+FORMATO: {request.image_format} ({'verticale' if '1920' in request.image_format else 'quadrato' if '1080x1080' in request.image_format else 'orizzontale'})
+
+ISTRUZIONI:
+1. Ogni slide deve essere collegata ma avere un focus diverso
+2. La prima slide deve catturare l'attenzione (hook visivo)
+3. Le slide centrali sviluppano il concetto
+4. L'ultima slide può avere una CTA visiva
+5. Stile coerente tra tutte le slide
+6. NO TESTO nelle immagini
+7. Prompt in inglese, dettagliati
+
+Rispondi SOLO con un JSON array di {num_images} prompt:
+["prompt slide 1", "prompt slide 2", ...]
+"""
+        
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": carousel_prompt}]
+        )
+        
+        import json
+        import re
+        content = response.content[0].text.strip()
+        # Estrai JSON
+        json_match = re.search(r'\[[\s\S]*\]', content)
+        if json_match:
+            prompts = json.loads(json_match.group())
+        else:
+            prompts = [request.visual_suggestion] * num_images
+    else:
+        # Singola immagine
+        single_prompt = f"""Genera un prompt DALL-E dettagliato per questa immagine.
+
+CONTENUTO POST:
+{post.content}
+
+SUGGERIMENTO VISUAL:
+{request.visual_suggestion}
+
+BRAND: {brand.name if brand else 'N/A'}
+SETTORE: {brand.sector if brand else 'N/A'}
+FORMATO: {request.image_format}
+
+ISTRUZIONI:
+- Prompt in inglese, molto dettagliato
+- Specifica stile, colori, composizione
+- NO TESTO nell'immagine
+- Adatto per social media professionale
+
+Rispondi SOLO con il prompt, niente altro.
+"""
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=500,
+            messages=[{"role": "user", "content": single_prompt}]
+        )
+        prompts = [response.content[0].text.strip()]
+    
+    # Genera immagini con DALL-E
+    openai_service = OpenAIService()
+    generated_images = []
+    
+    for i, prompt in enumerate(prompts):
+        try:
+            dalle_result = await openai_service.generate_image(prompt=prompt, size=dalle_size)
+            
+            # Salva localmente
+            filename = f"{post.id}_carousel_{i}_{uuid.uuid4().hex[:6]}.png"
+            filepath = f"/var/www/noscite-calendar/backend/uploads/posts/{filename}"
+            
+            if dalle_result.startswith("data:image"):
+                base64_data = dalle_result.split(",")[1]
+                with open(filepath, "wb") as f:
+                    f.write(base64.b64decode(base64_data))
+                image_url = f"/uploads/posts/{filename}"
+            else:
+                async with httpx.AsyncClient() as http_client:
+                    img_response = await http_client.get(dalle_result)
+                    if img_response.status_code == 200:
+                        with open(filepath, "wb") as f:
+                            f.write(img_response.content)
+                        image_url = f"/uploads/posts/{filename}"
+                    else:
+                        image_url = dalle_result
+            
+            generated_images.append(image_url)
+        except Exception as e:
+            print(f"Errore generazione immagine {i}: {e}")
+            continue
+    
+    # Aggiorna post
+    post.image_format = request.image_format
+    post.is_carousel = request.is_carousel
+    if request.is_carousel:
+        post.carousel_images = generated_images
+        post.carousel_prompts = prompts
+        post.image_url = generated_images[0] if generated_images else None
+    else:
+        post.image_url = generated_images[0] if generated_images else None
+        post.image_prompt = prompts[0] if prompts else None
+    
+    db.commit()
+    
+    return {
+        "images": generated_images,
+        "prompts": prompts,
+        "image_format": request.image_format,
+        "is_carousel": request.is_carousel
+    }

@@ -36,6 +36,7 @@ export default function ProjectDetail() {
   
   // View mode: 'calendar' or 'settings'
   const [viewMode, setViewMode] = useState('calendar');
+  const [expandedDay, setExpandedDay] = useState(null);
   
   // Edit modal
   const [editingPost, setEditingPost] = useState(null);
@@ -708,7 +709,9 @@ export default function ProjectDetail() {
             <div className="grid grid-cols-7">
               {days.map((day, idx) => {
                 const dayPosts = getPostsForDate(day.date);
+                const dateKey = day.date.toISOString().split('T')[0];
                 const isToday = day.date.toDateString() === new Date().toDateString();
+                const isExpanded = expandedDay === dateKey;
                 
                 return (
                   <div
@@ -726,7 +729,7 @@ export default function ProjectDetail() {
                     </div>
                     
                     <div className="space-y-1">
-                      {dayPosts.slice(0, 3).map(post => {
+                      {(isExpanded ? dayPosts : dayPosts.slice(0, 3)).map(post => {
                         const Icon = getPlatformIcon(post.platform);
                         const isSelected = selectedPostIds.includes(post.id);
                         
@@ -750,14 +753,27 @@ export default function ProjectDetail() {
                                 />
                               )}
                               <Icon size={12} />
+                              {post.content_type === "story" && <span title="Story">📱</span>}
+                              {post.content_type === "reel" && <span title="Reel">🎬</span>}
                               <span className="truncate">{post.content?.substring(0, 25) || 'Post'}</span>
                             </div>
                           </div>
                         );
                       })}
-                      {dayPosts.length > 3 && (
-                        <div className="text-xs text-gray-500 text-center">
-                          +{dayPosts.length - 3} altri
+                      {dayPosts.length > 3 && !isExpanded && (
+                        <div 
+                          className="text-xs text-teal-600 text-center cursor-pointer hover:text-teal-800 font-medium"
+                          onClick={() => setExpandedDay(dateKey)}
+                        >
+                          +{dayPosts.length - 3} altri ▼
+                        </div>
+                      )}
+                      {isExpanded && dayPosts.length > 3 && (
+                        <div 
+                          className="text-xs text-gray-500 text-center cursor-pointer hover:text-gray-700"
+                          onClick={() => setExpandedDay(null)}
+                        >
+                          ▲ Riduci
                         </div>
                       )}
                     </div>

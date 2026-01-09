@@ -15,7 +15,7 @@ async def search_trends(sector: str, brand_name: str = "") -> str:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "llama-3.1-sonar-large-128k-online",
+                "model": "sonar",
                 "messages": [{
                     "role": "user",
                     "content": f"Quali sono i trend attuali nel settore {sector}? Focus su temi per content marketing B2B. Rispondi in italiano, max 500 parole."
@@ -44,7 +44,7 @@ async def fetch_url_content(url: str) -> str:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "llama-3.1-sonar-large-128k-online",
+                "model": "sonar",
                 "messages": [{
                     "role": "user",
                     "content": f"Analizza questa pagina e estrai i contenuti principali, tone of voice e messaggi chiave: {url}. Rispondi in italiano."
@@ -73,7 +73,7 @@ async def analyze_competitor(url: str) -> str:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "llama-3.1-sonar-large-128k-online",
+                "model": "sonar",
                 "messages": [{
                     "role": "user",
                     "content": f"Analizza la strategia social/content di questo competitor: {url}. Identifica: temi principali, frequenza, tone of voice, punti di forza. In italiano."

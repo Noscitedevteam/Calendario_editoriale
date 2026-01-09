@@ -13,6 +13,7 @@ class Brand(Base):
     sector = Column(String(100))
     target_audience = Column(Text)
     tone_of_voice = Column(String(100))
+    ai_profile = Column(Text)  # JSON profilo da intervista AI
     brand_values = Column(JSON)
     website = Column(String(500))
     website_url = Column(String(500))

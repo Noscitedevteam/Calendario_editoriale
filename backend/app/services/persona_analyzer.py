@@ -241,17 +241,27 @@ async def analyze_buyer_personas(
                 # Determina B2B o B2C
                 business_type = "B2B" if sector and any(x in sector.lower() for x in ["b2b", "business", "consulenza", "servizi professionali", "enterprise"]) else "B2C"
                 
-                # Ricerca per ogni piattaforma
+                # Costruisci descrizione di TUTTE le personas per analisi combinata
+                all_personas = personas_data.get("personas", [])
+                personas_descriptions = []
+                for p in all_personas:
+                    weight = p.get("weight", 0)
+                    name = p.get("name", "Persona")
+                    demo = p.get("demographics", {})
+                    role = demo.get("role", "")
+                    age = demo.get("age_range", "")
+                    personas_descriptions.append(f"{name} ({role}, {age}, peso {weight*100:.0f}%)")
+                
+                combined_personas = " | ".join(personas_descriptions) if personas_descriptions else "Target generico"
+                logger.info(f"[PERSONA] Analyzing schedule for ALL personas: {combined_personas}")
+                
+                # Ricerca per ogni piattaforma considerando TUTTE le personas
                 for platform in platforms:
-                    # Usa la prima persona come riferimento
-                    persona = personas_data.get("personas", [{}])[0]
-                    persona_desc = f"{persona.get('name', '')} - {persona.get('demographics', {}).get('role', '')}"
-                    
                     perplexity_schedule = await research_optimal_schedule(
                         business_type=business_type,
                         sector=sector or "generico",
                         platform=platform,
-                        buyer_persona=persona_desc,
+                        buyer_persona=combined_personas,
                         country="Italia"
                     )
                     

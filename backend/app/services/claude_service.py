@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 # Import persona analyzer
 from app.services.persona_analyzer import analyze_buyer_personas, get_scheduling_for_platform, get_default_personas
 from app.services.rag_service import rag_service
+from app.services.generation_tracker import update_generation_status
+from app.services.perplexity_content_mix_research import research_all_platforms_content_mix, format_content_mix_for_prompt
 
 DEFAULT_STYLE_GUIDE = """
 LINEE GUIDA CONTENUTI:
@@ -34,7 +36,8 @@ async def generate_calendar_posts(
     style_guide: str = None,
     buyer_personas: dict = None,
     brand_id: int = None,
-    db = None
+    db = None,
+    project_id: int = None
 ) -> tuple[list, dict]:
     """
     Genera post per il calendario editoriale.
@@ -70,10 +73,36 @@ async def generate_calendar_posts(
         )
         logger.info(f"[CLAUDE] Personas generated: {len(buyer_personas.get('personas', []))} personas")
     
+    # STEP 1.5: Ricerca mix contenuti ottimale via Perplexity
+    content_mix_data = {}
+    try:
+        # Determina business type da buyer personas o default
+        business_type = "B2B" if brand_info.get("sector", "").lower() in ["tech", "software", "consulting", "manufacturing", "industria", "servizi"] else "B2C"
+        
+        # Prendi prima persona come riferimento
+        first_persona = ""
+        if buyer_personas and buyer_personas.get("personas"):
+            p = buyer_personas["personas"][0]
+            demo = p.get("demographics", {})
+            first_persona = f"{demo.get('role', '')} {demo.get('age_range', '')}"
+        
+        logger.info(f"[PERPLEXITY] Researching content mix for {platforms}...")
+        content_mix_data = await research_all_platforms_content_mix(
+            business_type=business_type,
+            sector=brand_info.get("sector", "generico"),
+            buyer_persona=first_persona or "professionista",
+            platforms=platforms,
+            country="Italia",
+            objective="engagement"
+        )
+        logger.info(f"[PERPLEXITY] Content mix researched for {len(content_mix_data)} platforms")
+    except Exception as e:
+        logger.warning(f"[PERPLEXITY] Error researching content mix: {e}")
+    
     # STEP 2: Genera contenuti in batch
     all_posts = []
     total_days = (end_date - start_date).days + 1
-    batch_size = 14
+    batch_size = 7
     batches = (total_days + batch_size - 1) // batch_size
     
     for batch_num in range(batches):
@@ -100,6 +129,7 @@ async def generate_calendar_posts(
             rag_context=rag_context,
             style_guide=style_guide or DEFAULT_STYLE_GUIDE,
             buyer_personas=buyer_personas,
+            content_mix_data=content_mix_data,
             batch_num=batch_num + 1,
             total_batches=batches
         )
@@ -129,6 +159,7 @@ async def generate_batch(
     rag_context: str,
     style_guide: str,
     buyer_personas: dict,
+    content_mix_data: dict,
     batch_num: int,
     total_batches: int
 ) -> list:
@@ -136,6 +167,9 @@ async def generate_batch(
     
     # Estrai scheduling strategy dalle personas
     scheduling_info = format_scheduling_from_personas(buyer_personas, platforms)
+    
+    # Formatta mix contenuti per il prompt
+    content_mix_info = format_content_mix_for_prompt(content_mix_data) if content_mix_data else "Usa mix standard: 60% post, 25% stories, 15% reel (dove supportati)"
     
     prompt = f"""Genera contenuti per il calendario editoriale.
 
@@ -158,6 +192,9 @@ Valori: {brand_info.get('brand_values', [])}
 ## SCHEDULING OTTIMALE (basato sulle personas)
 {scheduling_info}
 
+## MIX FORMATI CONTENUTO (basato su ricerca Perplexity)
+{content_mix_info}
+
 ## PROGETTO
 Periodo: {start_date.strftime('%Y-%m-%d')} - {end_date.strftime('%Y-%m-%d')}
 Piattaforme: {', '.join(platforms)}
@@ -168,22 +205,54 @@ Brief: {project_info.get('brief', 'N/A')}
 ## LINEE GUIDA
 {style_guide}
 
+## FORMATI CONTENUTO DISPONIBILI
+- **post**: Contenuto standard (immagine + testo). Per tutti i canali.
+- **story**: Contenuto effimero 24h verticale. SOLO Instagram e Facebook.
+- **reel**: Video breve verticale 15-60s. SOLO Instagram, Facebook, TikTok.
+
 ## ISTRUZIONI
-1. Genera ESATTAMENTE i post richiesti per questo periodo
-2. USA GLI ORARI E I GIORNI indicati nello scheduling (derivano dall'analisi delle buyer personas)
-3. Adatta il tono e contenuto alle personas identificate
-4. Ogni post deve avere: platform, date (YYYY-MM-DD), time (HH:MM), content, hashtags, content_type, pillar
+1. Genera i contenuti per questo periodo RISPETTANDO IL MIX di formati indicato sopra
+2. USA GLI ORARI E I GIORNI indicati nello scheduling
+3. Adatta tono e contenuto alle personas identificate
+4. VARIA i formati (post/story/reel) secondo le percentuali raccomandate per ogni piattaforma
+5. Per STORY: testo breve, call-to-action diretta, emoji, interattività (sondaggi, domande)
+6. Per REEL: testo brevissimo (hook iniziale), descrizione video, hashtag trending
+7. Ogni contenuto deve avere: platform, scheduled_date, scheduled_time, content, hashtags, content_type (post/story/reel), post_type, pillar, visual_suggestion
 
 ## FORMATO OUTPUT (JSON array)
 [
   {{
-    "platform": "linkedin",
+    "platform": "instagram",
     "scheduled_date": "2025-01-07",
     "scheduled_time": "08:30",
-    "content": "Testo del post...",
+    "content": "Testo lungo del post con valore educativo...",
     "hashtags": ["hashtag1", "hashtag2"],
-    "content_type": "educational",
-    "pillar": "thought leadership"
+    "content_type": "post",
+    "post_type": "educational",
+    "pillar": "thought leadership",
+    "visual_suggestion": "Carousel con 5 slide infografiche"
+  }},
+  {{
+    "platform": "instagram",
+    "scheduled_date": "2025-01-07",
+    "scheduled_time": "12:00",
+    "content": "Oggi in ufficio... indovina cosa stiamo preparando! 🎬\n\nRispondi con un emoji!",
+    "hashtags": ["behindthescenes", "team"],
+    "content_type": "story",
+    "post_type": "engagement",
+    "pillar": "brand awareness",
+    "visual_suggestion": "Video 10s del team al lavoro con sticker sondaggio"
+  }},
+  {{
+    "platform": "instagram",
+    "scheduled_date": "2025-01-08",
+    "scheduled_time": "18:00",
+    "content": "3 errori che tutti fanno! 🚫\n\nGuarda fino alla fine per il bonus tip 💡",
+    "hashtags": ["tips", "tutorial", "imparacontiktok"],
+    "content_type": "reel",
+    "post_type": "educational",
+    "pillar": "thought leadership",
+    "visual_suggestion": "Video verticale 30s: hook 3s + 3 tips con testo overlay + CTA finale. Musica trending."
   }}
 ]
 
@@ -195,7 +264,7 @@ Rispondi SOLO con il JSON array, senza markdown.
     try:
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=8000,
+            max_tokens=16000,
             messages=[{"role": "user", "content": prompt}]
         )
         
@@ -426,7 +495,7 @@ Rispondi SOLO con il JSON array.
     try:
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=8000,
+            max_tokens=16000,
             messages=[{"role": "user", "content": prompt}]
         )
         
