@@ -586,7 +586,7 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
                       isCarousel ? 'bg-purple-500' : 'bg-gray-300'
                     }`}
                   >
-                    <span className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-transform shadow ${
+                    <span className={`absolute left-0 top-1 w-5 h-5 bg-white rounded-full transition-transform shadow ${
                       isCarousel ? 'translate-x-8' : 'translate-x-1'
                     }`} />
                   </button>
@@ -600,7 +600,7 @@ export default function PostEditModal({ post, isOpen, onClose, onSave }) {
                       max="5"
                       value={numSlides}
                       onChange={(e) => setNumSlides(parseInt(e.target.value))}
-                      className="w-full accent-purple-500"
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-500"
                     />
                     <div className="flex justify-between text-xs text-gray-400 mt-1">
                       <span>2</span>

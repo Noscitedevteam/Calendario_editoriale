@@ -374,8 +374,8 @@ export default function ProjectDetail() {
         project_id: parseInt(id),
         ...aiCampaign
       });
-      setPostsList(prev => [...prev, ...(res.data.posts || [])]);
-      setAddMessage({ type: 'success', text: `${res.data.posts?.length || 0} post generati!` });
+      setPostsList(prev => [...prev, ...(res.data || [])]);
+      setAddMessage({ type: 'success', text: `${res.data?.length || 0} post generati!` });
       setTimeout(() => {
         setShowAddModal(false);
         setAddMessage(null);
@@ -409,7 +409,7 @@ export default function ProjectDetail() {
       // Remove old posts, add new ones
       setPostsList(prev => [
         ...prev.filter(p => !selectedPostIds.includes(p.id)),
-        ...(res.data.posts || [])
+        ...(res.data || [])
       ]);
       setShowReplaceModal(false);
       setReplaceBrief('');

@@ -63,8 +63,8 @@ export default function Home() {
             © 2026 Noscite di Stefano Andrello - P.IVA 14385240966
           </p>
           <div className="flex gap-6 text-sm">
-            <a href="https://www.iubenda.com/privacy-policy/63014802" target="_blank" rel="noopener noreferrer" className="text-white/60 hover:text-white">Privacy Policy</a>
-            <a href="https://www.iubenda.com/privacy-policy/63014802/cookie-policy" target="_blank" rel="noopener noreferrer" className="text-white/60 hover:text-white">Cookie Policy</a>
+            <a href="https://noscite.it/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-white/60 hover:text-white">Privacy Policy</a>
+            <a href="https://noscite.it/cookie-policy" target="_blank" rel="noopener noreferrer" className="text-white/60 hover:text-white">Cookie Policy</a>
             <a href="mailto:info@noscite.it" className="text-white/60 hover:text-white">info@noscite.it</a>
           </div>
         </div>

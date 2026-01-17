@@ -1,4 +1,5 @@
 import httpx
+from app.core.config import settings
 import os
 import logging
 from datetime import datetime, timezone
@@ -36,6 +37,11 @@ class PublisherService:
             media_asset = None
             
             # Se c'è un'immagine, uploadala
+            # Converti URL relativo in assoluto
+            image_url = post.image_url
+            if image_url and image_url.startswith("/"):
+                image_url = f"{settings.FRONTEND_URL}{image_url}"
+
             if post.image_url:
                 try:
                     # Step 1: Registra upload
@@ -138,25 +144,83 @@ class PublisherService:
                 logger.error(f"LinkedIn publish error: {response.status_code} - {response.text}")
                 return {"success": False, "error": response.text}
     async def publish_to_facebook(self, post: Post, connection: SocialConnection) -> dict:
-        """Pubblica su Facebook"""
-        async with httpx.AsyncClient() as client:
+        """Pubblica su Facebook (supporta caroselli)"""
+        async with httpx.AsyncClient(timeout=60) as client:
             content = post.content
             if post.hashtags:
                 hashtags = " ".join([f"#{h}" if not h.startswith("#") else h for h in post.hashtags])
-                content = f"{content}\n\n{hashtags}"
+                content = f"{content}
+
+{hashtags}"
             
             page_id = connection.external_account_id
             
-            if post.image_url:
-                # Post con immagine
+            # Funzione helper per convertire URL
+            def make_absolute_url(url):
+                if url and url.startswith("/"):
+                    return f"{settings.FRONTEND_URL}{url}"
+                return url
+            
+            # Controlla se è un carosello
+            if post.is_carousel and post.carousel_images and len(post.carousel_images) > 1:
+                logger.info(f"Publishing Facebook carousel with {len(post.carousel_images)} images")
+                
+                # Step 1: Carica ogni immagine e ottieni gli ID
+                photo_ids = []
+                for idx, img_url in enumerate(post.carousel_images):
+                    # Carica foto non pubblicata
+                    photo_response = await client.post(
+                        f"https://graph.facebook.com/v18.0/{page_id}/photos",
+                        data={
+                            "url": make_absolute_url(img_url),
+                            "published": "false",
+                            "access_token": connection.access_token
+                        }
+                    )
+                    photo_result = photo_response.json()
+                    
+                    if "id" not in photo_result:
+                        logger.error(f"Facebook carousel photo {idx} error: {photo_result}")
+                        return {"success": False, "error": f"Photo {idx} upload failed: {photo_result.get('error', {}).get('message', 'Unknown')}"}
+                    
+                    photo_ids.append(photo_result["id"])
+                    logger.info(f"Uploaded Facebook photo {idx}: {photo_result['id']}")
+                
+                # Step 2: Crea post con multiple foto attached
+                attached_media = [{"media_fbid": pid} for pid in photo_ids]
+                
+                post_response = await client.post(
+                    f"https://graph.facebook.com/v18.0/{page_id}/feed",
+                    json={
+                        "message": content,
+                        "attached_media": attached_media,
+                        "access_token": connection.access_token
+                    }
+                )
+                result = post_response.json()
+                
+                if "id" in result:
+                    logger.info(f"Facebook carousel published: {result['id']}")
+                    return {
+                        "success": True,
+                        "external_post_id": result["id"],
+                        "external_post_url": f"https://facebook.com/{result['id']}"
+                    }
+                else:
+                    logger.error(f"Facebook carousel post error: {result}")
+                    return {"success": False, "error": result.get("error", {}).get("message", "Carousel post failed")}
+            
+            elif post.image_url:
+                # Post con immagine singola
                 response = await client.post(
                     f"https://graph.facebook.com/v18.0/{page_id}/photos",
                     data={
                         "caption": content,
-                        "url": post.image_url,
+                        "url": make_absolute_url(post.image_url),
                         "access_token": connection.access_token
                     }
                 )
+                result = response.json()
             else:
                 # Post solo testo
                 response = await client.post(
@@ -166,8 +230,7 @@ class PublisherService:
                         "access_token": connection.access_token
                     }
                 )
-            
-            result = response.json()
+                result = response.json()
             
             if "id" in result:
                 return {
@@ -179,12 +242,12 @@ class PublisherService:
                 logger.error(f"Facebook publish error: {result}")
                 return {"success": False, "error": result.get("error", {}).get("message", "Unknown error")}
     
-    async def publish_to_instagram(self, post: Post, connection: SocialConnection) -> dict:
-        """Pubblica su Instagram"""
+    async def publish_to_instagram    async def publish_to_instagram    async def publish_to_instagram(self, post: Post, connection: SocialConnection) -> dict:
+        """Pubblica su Instagram (supporta caroselli)"""
         if not post.image_url:
             return {"success": False, "error": "Instagram richiede un'immagine"}
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=60) as client:
             ig_account_id = connection.external_account_id
             
             content = post.content
@@ -192,24 +255,74 @@ class PublisherService:
                 hashtags = " ".join([f"#{h}" if not h.startswith("#") else h for h in post.hashtags])
                 content = f"{content}\n\n{hashtags}"
             
-            # Step 1: Crea media container
-            container_response = await client.post(
-                f"https://graph.facebook.com/v18.0/{ig_account_id}/media",
-                data={
-                    "image_url": f"https://calendar.noscite.it{post.image_url}" if post.image_url.startswith("/") else post.image_url,
-                    "caption": content,
-                    "access_token": connection.access_token
-                }
-            )
-            container_result = container_response.json()
+            # Funzione helper per convertire URL
+            def make_absolute_url(url):
+                if url and url.startswith("/"):
+                    return f"{settings.FRONTEND_URL}{url}"
+                return url
             
-            if "id" not in container_result:
-                logger.error(f"Instagram container error: {container_result}")
-                return {"success": False, "error": container_result.get("error", {}).get("message", "Container creation failed")}
+            # Controlla se è un carosello
+            if post.is_carousel and post.carousel_images and len(post.carousel_images) > 1:
+                logger.info(f"Publishing Instagram carousel with {len(post.carousel_images)} images")
+                
+                # Step 1: Crea container per ogni immagine del carosello
+                children_ids = []
+                for idx, img_url in enumerate(post.carousel_images):
+                    child_response = await client.post(
+                        f"https://graph.facebook.com/v18.0/{ig_account_id}/media",
+                        data={
+                            "image_url": make_absolute_url(img_url),
+                            "is_carousel_item": "true",
+                            "access_token": connection.access_token
+                        }
+                    )
+                    child_result = child_response.json()
+                    
+                    if "id" not in child_result:
+                        logger.error(f"Instagram carousel item {idx} error: {child_result}")
+                        return {"success": False, "error": f"Carousel item {idx} failed: {child_result.get('error', {}).get('message', 'Unknown')}"}
+                    
+                    children_ids.append(child_result["id"])
+                    logger.info(f"Created carousel item {idx}: {child_result['id']}")
+                
+                # Step 2: Crea container del carosello
+                carousel_response = await client.post(
+                    f"https://graph.facebook.com/v18.0/{ig_account_id}/media",
+                    data={
+                        "media_type": "CAROUSEL",
+                        "children": ",".join(children_ids),
+                        "caption": content,
+                        "access_token": connection.access_token
+                    }
+                )
+                carousel_result = carousel_response.json()
+                
+                if "id" not in carousel_result:
+                    logger.error(f"Instagram carousel container error: {carousel_result}")
+                    return {"success": False, "error": carousel_result.get("error", {}).get("message", "Carousel container failed")}
+                
+                container_id = carousel_result["id"]
+                logger.info(f"Created carousel container: {container_id}")
+                
+            else:
+                # Post singola immagine
+                container_response = await client.post(
+                    f"https://graph.facebook.com/v18.0/{ig_account_id}/media",
+                    data={
+                        "image_url": make_absolute_url(post.image_url),
+                        "caption": content,
+                        "access_token": connection.access_token
+                    }
+                )
+                container_result = container_response.json()
+                
+                if "id" not in container_result:
+                    logger.error(f"Instagram container error: {container_result}")
+                    return {"success": False, "error": container_result.get("error", {}).get("message", "Container creation failed")}
+                
+                container_id = container_result["id"]
             
-            container_id = container_result["id"]
-            
-            # Step 2: Pubblica il container
+            # Step finale: Pubblica il container
             publish_response = await client.post(
                 f"https://graph.facebook.com/v18.0/{ig_account_id}/media_publish",
                 data={

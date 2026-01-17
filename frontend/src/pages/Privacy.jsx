@@ -40,8 +40,8 @@ export default function Privacy() {
             
             <div className="border rounded-lg p-6 bg-gray-50">
               <a 
-                href="https://www.iubenda.com/privacy-policy/63014802" 
-                className="iubenda-white iubenda-noiframe iubenda-embed iubenda-noiframe text-[#3DAFA8] hover:underline font-medium" 
+                href="https://noscite.it/privacy-policy" 
+                className="text-[#3DAFA8] hover:underline font-medium" 
                 title="Privacy Policy"
               >
                 Visualizza la Privacy Policy completa
@@ -51,8 +51,8 @@ export default function Privacy() {
             <div className="mt-8 pt-6 border-t">
               <h2 className="text-xl font-semibold text-[#2C3E50] mb-4">Cookie Policy</h2>
               <a 
-                href="https://www.iubenda.com/privacy-policy/63014802/cookie-policy" 
-                className="iubenda-white iubenda-noiframe iubenda-embed iubenda-noiframe text-[#3DAFA8] hover:underline font-medium" 
+                href="https://noscite.it/cookie-policy" 
+                className="text-[#3DAFA8] hover:underline font-medium" 
                 title="Cookie Policy"
               >
                 Visualizza la Cookie Policy completa

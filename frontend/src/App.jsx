@@ -10,6 +10,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import Profile from './pages/Profile';
 import ProjectWizard from './pages/ProjectWizard';
 import SelectGoogleLocation from './pages/SelectGoogleLocation';
+import SelectFacebookPage from './pages/SelectFacebookPage';
 import VoiceProfilingInterview from './pages/VoiceProfilingInterview';
 import Privacy from './pages/Privacy';
 import Home from './pages/Home';
@@ -43,6 +44,7 @@ function App() {
         <Route path="/admin" element={<PrivateRoute><AdminDashboard /></PrivateRoute>} />
         <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
         <Route path="/select-google-location" element={<SelectGoogleLocation />} />
+        <Route path="/select-facebook-page" element={<SelectFacebookPage />} />
         <Route path="/brand/:brandId/voice-interview" element={<PrivateRoute><VoiceProfilingInterview /></PrivateRoute>} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/" element={<Home />} />

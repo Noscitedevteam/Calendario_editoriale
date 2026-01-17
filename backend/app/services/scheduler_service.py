@@ -23,10 +23,13 @@ async def check_and_publish_posts():
         logger.info(f"Scheduler check: {current_date} {current_time}")
         
         # Trova post da pubblicare
+        from sqlalchemy import func
+        
+        # Confronta solo HH:MM (ignora secondi se presenti)
         posts = db.query(Post).filter(
             Post.scheduled_date == current_date,
-            Post.scheduled_time.like(current_time + '%'),
-            Post.publication_status.in_(["scheduled", "pending", "draft"])
+            func.substring(Post.scheduled_time, 1, 5) == current_time,
+            Post.publication_status.in_(["scheduled", "pending"])
         ).all()
         
         logger.info(f"Found {len(posts)} posts to publish")

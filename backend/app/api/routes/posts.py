@@ -43,11 +43,13 @@ class ManualPostCreate(BaseModel):
 
 class AIPostGenerateRequest(BaseModel):
     project_id: int
-    platform: str
+    platforms: Optional[List[str]] = []  # Array di piattaforme selezionate
+    ai_decide_platforms: bool = False  # Se True, AI decide le piattaforme
     start_date: date
     end_date: date
-    num_posts: int = 3
-    brief: str  # Es: "Campagna sul nuovo partner X", "Promozione Black Friday"
+    num_posts: Optional[int] = None  # Numero post richiesto
+    ai_decide_num_posts: bool = False  # Se True, AI decide il numero
+    brief: str
     pillar: Optional[str] = ""
 
 class BatchDeleteRequest(BaseModel):
@@ -195,11 +197,36 @@ async def generate_ai_posts(
         except Exception as e:
             print(f"[GENERATE-AI] URL analysis error: {e}")
     
-    # Calcola posts_per_week per avere il numero richiesto nel periodo
+    # === DETERMINA PIATTAFORME ===
     from datetime import timedelta
+    
+    # Piattaforme disponibili del progetto
+    available_platforms = project.platforms or ["instagram", "facebook", "linkedin"]
+    
+    if request.ai_decide_platforms or not request.platforms:
+        # AI decide le piattaforme migliori basandosi sul brief e brand
+        selected_platforms = available_platforms  # Usa tutte le piattaforme del progetto
+    else:
+        selected_platforms = request.platforms
+    
+    # === DETERMINA NUMERO POST ===
     days = (request.end_date - request.start_date).days + 1
     weeks = max(1, days / 7)
-    posts_per_week_calc = max(1, int(request.num_posts / weeks))
+    
+    if request.ai_decide_num_posts or request.num_posts is None:
+        # AI decide: circa 3-4 post per piattaforma a settimana
+        posts_per_platform_week = 3
+        num_posts = int(weeks * len(selected_platforms) * posts_per_platform_week)
+        num_posts = max(3, min(num_posts, 50))  # Min 3, max 50 post
+    else:
+        num_posts = request.num_posts
+    
+    # Calcola distribuzione per piattaforma
+    posts_per_week_dict = {}
+    posts_per_platform = max(1, num_posts // len(selected_platforms))
+    posts_per_week_calc = max(1, int(posts_per_platform / weeks))
+    for plat in selected_platforms:
+        posts_per_week_dict[plat] = posts_per_week_calc
     
     # Combina content pillars del progetto con pillar richiesto
     themes = [request.pillar] if request.pillar else (project.content_pillars or project.themes or [])
@@ -219,23 +246,23 @@ async def generate_ai_posts(
             brand_values=brand.brand_values or "",
             start_date=str(request.start_date),
             end_date=str(request.end_date),
-            platforms=[request.platform],
-            posts_per_week={request.platform: posts_per_week_calc},
+            platforms=selected_platforms,
+            posts_per_week=posts_per_week_dict,
             brief=enriched_brief,
             themes=themes,
-            custom_prompt=f"Genera esattamente {request.num_posts} post. {request.brief}",
+            custom_prompt=f"Genera esattamente {num_posts} post distribuiti sulle piattaforme {', '.join(selected_platforms)}. {request.brief}",
             brand_style_guide=brand.style_guide if brand else "",
             urls_content=brand_context_from_urls
         )
         
         # Limita al numero richiesto
-        posts_data = posts_data[:request.num_posts]
+        posts_data = posts_data[:num_posts]
         
         created_posts = []
         for post_data in posts_data:
             post = Post(
                 project_id=request.project_id,
-                platform=post_data.get("platform", request.platform),
+                platform=post_data.get("platform", selected_platforms[0] if selected_platforms else "instagram"),
                 scheduled_date=post_data.get("scheduled_date"),
                 scheduled_time=post_data.get("scheduled_time", "09:00"),
                 content=post_data.get("content", ""),
@@ -244,6 +271,7 @@ async def generate_ai_posts(
                 post_type=post_data.get("post_type", ""),
                 visual_suggestion=post_data.get("visual_suggestion", ""),
                 cta=post_data.get("cta", ""),
+                call_to_action=post_data.get("cta", ""),
                 status="draft"
             )
             db.add(post)
@@ -351,6 +379,7 @@ def batch_replace_posts(
                 post_type=post_data.get("post_type", ""),
                 visual_suggestion=post_data.get("visual_suggestion", ""),
                 cta=post_data.get("cta", ""),
+                call_to_action=post_data.get("cta", ""),
                 status="draft"
             )
             db.add(post)
