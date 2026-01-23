@@ -63,8 +63,8 @@ export default function BrandDetail() {
 
   const handleConnectSocial = async (platform) => {
     try {
-      const res = await socialApi.getAuthUrl(id, platform);
-      window.location.href = res.data.auth_url;
+      const token = localStorage.getItem('token');
+      window.location.href = `/api/social/authorize/${platform}?brand_id=${id}&token=${token}`;
     } catch (err) {
       alert('Errore nella connessione');
     }

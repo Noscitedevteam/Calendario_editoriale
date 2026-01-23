@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api.routes import auth, brands, projects, posts, generation, export, admin, oauth, social, documents, voice_profiling, subscriptions
+from app.api.routes import auth, brands, projects, posts, generation, export, admin, oauth, social, social_stats, documents, voice_profiling, subscriptions
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -32,6 +32,7 @@ app.include_router(export.router, prefix="/api/export", tags=["Export"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(oauth.router, prefix="/api/oauth", tags=["OAuth"])
 app.include_router(social.router, prefix="/api/social", tags=["Social"])
+app.include_router(social_stats.router, prefix="/api/social/stats", tags=["Social Stats"])
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 app.include_router(voice_profiling.router, prefix="/api", tags=["Voice Profiling"])
 app.include_router(subscriptions.router, prefix="/api/subscriptions", tags=["Subscriptions"])

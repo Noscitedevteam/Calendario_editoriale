@@ -115,7 +115,7 @@ async def authorize_social(
             "client_id": settings.META_APP_ID,
             "redirect_uri": f"{settings.BASE_URL}/api/social/callback/facebook",
             "state": state,
-            "scope": "pages_show_list,pages_read_engagement,pages_manage_posts,public_profile",
+            "scope": "pages_show_list,pages_read_engagement,pages_manage_posts,read_insights,public_profile",
             "response_type": "code"
         }
         auth_url = f"https://www.facebook.com/v18.0/dialog/oauth?{urlencode(params)}"
@@ -125,7 +125,7 @@ async def authorize_social(
             "client_id": settings.META_APP_ID,
             "redirect_uri": f"{settings.BASE_URL}/api/social/callback/instagram",
             "state": state,
-            "scope": "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,pages_manage_posts,business_management",
+            "scope": "instagram_basic,instagram_content_publish,instagram_manage_insights,pages_show_list,pages_read_engagement,pages_manage_posts,business_management",
             "response_type": "code"
         }
         auth_url = f"https://www.facebook.com/v18.0/dialog/oauth?{urlencode(params)}"
@@ -136,7 +136,7 @@ async def authorize_social(
             "client_id": settings.LINKEDIN_CLIENT_ID,
             "redirect_uri": f"{settings.BASE_URL}/api/social/callback/linkedin",
             "state": state,
-            "scope": "openid profile email w_member_social w_organization_social"
+            "scope": "openid profile email w_member_social w_organization_social r_organization_admin"
         }
         auth_url = f"https://www.linkedin.com/oauth/v2/authorization?{urlencode(params)}"
         
@@ -386,13 +386,27 @@ async def linkedin_callback(
             
             logger.info(f"LinkedIn found {len(organizations)} organizations")
         
-        # Elimina vecchie connessioni LinkedIn per questo brand
+        
+        # Se ci sono organizzazioni, redirect a selezione
+        if len(organizations) > 0:
+            selection_token = secrets.token_urlsafe(32)
+            pending_linkedin_orgs[selection_token] = {
+                "brand_id": state_data["brand_id"],
+                "user_id": state_data["user_id"],
+                "access_token": access_token,
+                "expires_in": expires_in,
+                "profile": {"id": profile_data.get("sub", ""), "name": profile_data.get("name", "")},
+                "organizations": organizations,
+                "created_at": datetime.now(timezone.utc)
+            }
+            return RedirectResponse(f"{settings.FRONTEND_URL}/select-linkedin-org?token={selection_token}")
+        
+        # Nessuna organizzazione - salva solo profilo
         db.query(SocialConnection).filter(
             SocialConnection.brand_id == state_data["brand_id"],
             SocialConnection.platform == "linkedin"
         ).delete()
         
-        # Salva connessione profilo personale
         profile_connection = SocialConnection(
             brand_id=state_data["brand_id"],
             platform="linkedin",
@@ -405,40 +419,11 @@ async def linkedin_callback(
             connected_by_user_id=state_data["user_id"]
         )
         db.add(profile_connection)
-        
-        # Salva connessioni per ogni organizzazione
-        for org in organizations:
-            org_connection = SocialConnection(
-                brand_id=state_data["brand_id"],
-                platform="linkedin",
-                access_token=access_token,
-                token_expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=expires_in),
-                external_account_id=str(org["id"]),
-                external_account_name=f"{org['name']} (Pagina)",
-                external_account_url=f"https://linkedin.com/company/{org.get('vanity_name', org['id'])}",
-                account_type="organization",
-                connected_by_user_id=state_data["user_id"]
-            )
-            db.add(org_connection)
-        
         db.commit()
         
-        logger.info(f"LinkedIn connected: profile + {len(organizations)} organizations for brand {state_data['brand_id']}")
+        logger.info(f"LinkedIn connected: profile only for brand {state_data['brand_id']}")
         return RedirectResponse(f"{settings.FRONTEND_URL}/?social_connected=linkedin")
-            
-    except Exception as e:
-        logger.error(f"LinkedIn callback error: {e}")
-        return RedirectResponse(f"{settings.FRONTEND_URL}?social_error=callback_failed")
-
-
-# Placeholder per mantenere la struttura - questo verrà rimosso dal replace
-
-        
-        db.add(connection)
-        db.commit()
-        
-        return RedirectResponse(f"{settings.FRONTEND_URL}/brand/{state_data['brand_id']}?social_connected=linkedin")
-        
+    
     except Exception as e:
         return RedirectResponse(f"{settings.FRONTEND_URL}?social_error={str(e)}")
 
@@ -704,6 +689,8 @@ async def instagram_callback(
                 external_account_id=instagram_account,
                 access_token=page_access_token,
                 account_type="business",
+                external_account_name=ig_info.get("username", "Instagram Business"),
+                external_account_url=f"https://instagram.com/{ig_info.get('username')}",
                 is_active=True
             )
             db.add(connection)
@@ -735,3 +722,90 @@ async def disconnect_social(
     db.commit()
     
     return {"message": "Account disconnesso"}
+
+# Storage temporaneo per organizzazioni LinkedIn
+pending_linkedin_orgs = {}
+
+@router.get("/linkedin-orgs/{token}")
+async def get_linkedin_orgs(token: str):
+    """Restituisce le organizzazioni LinkedIn disponibili per la selezione"""
+    data = pending_linkedin_orgs.get(token)
+    if not data:
+        raise HTTPException(status_code=404, detail="Token non valido o scaduto")
+    
+    return {
+        "profile": data["profile"],
+        "organizations": data["organizations"]
+    }
+
+@router.post("/linkedin-orgs/{token}/select")
+async def select_linkedin_org(
+    token: str,
+    org_id: str,
+    include_profile: bool = False,
+    db: Session = Depends(get_db)
+):
+    """Salva l'organizzazione LinkedIn selezionata"""
+    data = pending_linkedin_orgs.pop(token, None)
+    if not data:
+        raise HTTPException(status_code=404, detail="Token non valido o scaduto")
+    
+    brand_id = data["brand_id"]
+    user_id = data["user_id"]
+    access_token = data["access_token"]
+    expires_in = data["expires_in"]
+    
+    # Elimina vecchie connessioni LinkedIn per questo brand
+    db.query(SocialConnection).filter(
+        SocialConnection.brand_id == brand_id,
+        SocialConnection.platform == "linkedin"
+    ).delete()
+    
+    # Se richiesto, salva anche il profilo personale
+    if include_profile and data.get("profile"):
+        profile = data["profile"]
+        profile_connection = SocialConnection(
+            brand_id=brand_id,
+            platform="linkedin",
+            access_token=access_token,
+            token_expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=expires_in),
+            external_account_id=profile["id"],
+            external_account_name=f"{profile['name']} (Profilo)",
+            external_account_url=f"https://linkedin.com/in/{profile['id']}",
+            account_type="profile",
+            connected_by_user_id=user_id,
+            is_active=(org_id == "profile")  # Attivo se solo profilo
+        )
+        db.add(profile_connection)
+    
+    # Se solo profilo personale, salva e ritorna subito
+    if org_id == "profile":
+        db.commit()
+        return {"success": True, "org_name": profile_connection.external_account_name}
+    
+    # Trova e salva l'organizzazione selezionata
+    selected_org = None
+    for org in data["organizations"]:
+        if str(org["id"]) == org_id:
+            selected_org = org
+            break
+    
+    
+    if not selected_org:
+        raise HTTPException(status_code=404, detail="Organizzazione non trovata")
+    
+    org_connection = SocialConnection(
+        brand_id=brand_id,
+        platform="linkedin",
+        access_token=access_token,
+        token_expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=expires_in),
+        external_account_id=str(selected_org["id"]),
+        external_account_name=f"{selected_org['name']} (Pagina)",
+        external_account_url=f"https://linkedin.com/company/{selected_org.get('vanity_name', selected_org['id'])}",
+        account_type="organization",
+        connected_by_user_id=user_id
+    )
+    db.add(org_connection)
+    db.commit()
+    
+    return {"success": True, "org_name": selected_org["name"]}

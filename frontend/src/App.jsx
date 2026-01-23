@@ -16,6 +16,10 @@ import AdminDashboard from './pages/AdminDashboard';
 import SaasAdmin from './pages/SaasAdmin';
 import BrandsPage from './pages/BrandsPage';
 import SocialPage from './pages/SocialPage';
+import InsightsPage from './pages/InsightsPage';
+import SelectFacebookPage from './pages/SelectFacebookPage';
+import SelectGoogleLocation from './pages/SelectGoogleLocation';
+import SelectLinkedInOrg from './pages/SelectLinkedInOrg';
 import DocumentsPage from './pages/DocumentsPage';
 import SettingsPage from './pages/SettingsPage';
 
@@ -38,6 +42,9 @@ function App() {
         {/* Public routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/select-facebook-page" element={<SelectFacebookPage />} />
+        <Route path="/select-google-location" element={<SelectGoogleLocation />} />
+        <Route path="/select-linkedin-org" element={<SelectLinkedInOrg />} />
 
         {/* Protected routes with layout */}
         <Route
@@ -64,6 +71,7 @@ function App() {
           
           {/* Social */}
           <Route path="social" element={<SocialPage />} />
+          <Route path="insights" element={<InsightsPage />} />
           
           {/* Documents */}
           <Route path="documents" element={<DocumentsPage />} />

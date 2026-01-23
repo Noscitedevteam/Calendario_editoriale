@@ -106,7 +106,7 @@ export const exportApi = {
 export const social = {
   getConnections: (brandId) => api.get(`/social/connections/${brandId}`),
   disconnect: (connectionId) => api.delete(`/social/disconnect/${connectionId}`),
-  getAuthUrl: (brandId, platform) => api.get(`/social/auth/${brandId}/${platform}`),
+  getAuthUrl: (brandId, platform) => api.get(`/social/authorize/${platform}?brand_id=${brandId}`),
 };
 
 export const documents = {

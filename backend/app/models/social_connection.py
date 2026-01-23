@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -61,3 +61,36 @@ class PostPublication(Base):
     # Relationships
     post = relationship("Post", back_populates="publications")
     social_connection = relationship("SocialConnection", back_populates="publications")
+
+
+class SocialMetric(Base):
+    __tablename__ = "social_metrics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    social_connection_id = Column(Integer, ForeignKey("social_connections.id", ondelete="CASCADE"))
+    post_publication_id = Column(Integer, ForeignKey("post_publications.id", ondelete="CASCADE"))
+    
+    # Metriche comuni
+    impressions = Column(Integer, default=0)
+    reach = Column(Integer, default=0)
+    engagement = Column(Integer, default=0)
+    likes = Column(Integer, default=0)
+    comments = Column(Integer, default=0)
+    shares = Column(Integer, default=0)
+    clicks = Column(Integer, default=0)
+    saves = Column(Integer, default=0)
+    
+    # Metriche account
+    followers_count = Column(Integer)
+    followers_gained = Column(Integer)
+    
+    # Periodo
+    metric_date = Column(DateTime, nullable=False)
+    metric_type = Column(String(20), default="daily")
+    
+    fetched_at = Column(DateTime(timezone=True), server_default=func.now())
+    raw_data = Column(JSON)
+    
+    # Relationships
+    social_connection = relationship("SocialConnection", backref="metrics")
+    post_publication = relationship("PostPublication", backref="metrics")
