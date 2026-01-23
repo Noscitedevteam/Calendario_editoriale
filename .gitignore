@@ -5,3 +5,18 @@ __pycache__/
 .env
 *.db
 backend/uploads/posts/
+
+# Python virtual environments
+backend/venv/
+venv/
+.venv/
+
+# Backup / temp files
+**/*.bak
+**/*.bak_*
+**/*.broken
+**/*_legacy.py
+
+# Local uploads/cache
+backend/uploads/
+uploads/
