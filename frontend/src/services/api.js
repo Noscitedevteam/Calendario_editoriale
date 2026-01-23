@@ -5,6 +5,12 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// Client dedicato per auth/refresh per evitare loop negli interceptor
+const authApi = axios.create({
+  baseURL: '/api',
+  headers: { 'Content-Type': 'application/json' },
+});
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -16,13 +22,15 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
     
-    // Se 401 e non è già un retry, prova a refreshare
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Se 401 e non è già un retry e non è la chiamata refresh stessa
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/auth/refresh')) {
       originalRequest._retry = true;
       
       try {
-        // Prova a ottenere nuovo token con refresh
-        const refreshResponse = await api.post('/auth/refresh');
+        // Usa authApi per evitare loop
+        const refreshResponse = await authApi.post('/auth/refresh', {}, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
         const newToken = refreshResponse.data.access_token;
         
         localStorage.setItem('token', newToken);
@@ -76,21 +84,43 @@ export const posts = {
   createManual: (data) => api.post('/posts/manual', data),
   generateAI: (data) => api.post('/posts/generate-ai', data),
   batchDelete: (postIds) => api.post('/posts/batch-delete', { post_ids: postIds }),
-  batchReplace: (postIds, brief) => api.post('/posts/batch-replace', { post_ids: postIds, brief }),
-  regenerate: (id, prompt) => api.post(`/posts/${id}/regenerate`, { prompt }),
-  generateImage: (id) => api.post(`/posts/${id}/generate-image`),
+  generateImage: (postId, data) => api.post(`/posts/${postId}/generate-image`, data),
+  schedule: (postId, data) => api.post(`/posts/${postId}/schedule`, data),
+  publish: (postId) => api.post(`/posts/${postId}/publish`),
 };
 
 export const generation = {
-  generateCalendar: (projectId) => api.post(`/generate/calendar/${projectId}`),
-  getStatus: (projectId) => api.get(`/generate/status/${projectId}`),
-  // Personas
+  generate: (data) => api.post('/generate/', data),
   generatePersonas: (projectId) => api.post(`/generate/personas/${projectId}`),
-  regeneratePersonas: (projectId, feedback) => api.post(`/generate/personas/${projectId}/regenerate`, { feedback }),
-  confirmPersonas: (projectId, personas) => api.put(`/generate/personas/${projectId}/confirm`, { personas }),
-  getPersonas: (projectId) => api.get(`/generate/personas/${projectId}`),
-  // Singola persona
-  addPersona: (projectId, description) => api.post(`/generate/personas/${projectId}/add`, { persona_description: description }),
+  confirmPersonas: (projectId, personas) => api.post(`/generate/personas/${projectId}/confirm`, { personas }),
   deletePersona: (projectId, index) => api.delete(`/generate/personas/${projectId}/${index}`),
-  regeneratePersona: (projectId, index, description) => api.post(`/generate/personas/${projectId}/${index}/regenerate`, { persona_description: description }),
+  regeneratePersona: (projectId, index) => api.post(`/generate/personas/${projectId}/${index}/regenerate`),
+  addPersona: (projectId) => api.post(`/generate/personas/${projectId}/add`),
+};
+
+export const exportApi = {
+  excel: (projectId) => api.get(`/export/excel/${projectId}`, { responseType: 'blob' }),
+  pdf: (projectId) => api.get(`/export/pdf/${projectId}`, { responseType: 'blob' }),
+};
+
+export const social = {
+  getConnections: (brandId) => api.get(`/social/connections/${brandId}`),
+  disconnect: (connectionId) => api.delete(`/social/disconnect/${connectionId}`),
+  getAuthUrl: (brandId, platform) => api.get(`/social/auth/${brandId}/${platform}`),
+};
+
+export const documents = {
+  list: (brandId) => api.get(`/documents/brand/${brandId}`),
+  upload: (brandId, formData) => api.post(`/documents/upload/${brandId}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  delete: (docId) => api.delete(`/documents/${docId}`),
+};
+
+export const subscriptions = {
+  getPlans: () => api.get('/subscriptions/plans'),
+  getCurrentSubscription: () => api.get('/subscriptions/current'),
+  subscribe: (planId) => api.post('/subscriptions/subscribe', { plan_id: planId }),
+  cancel: () => api.post('/subscriptions/cancel'),
+  getUsage: () => api.get('/subscriptions/usage'),
 };
