@@ -190,9 +190,9 @@ async def fetch_facebook_stats(conn: SocialConnection, db: Session) -> dict:
             f"https://graph.facebook.com/v18.0/{conn.external_account_id}/insights",
             params={
                 "access_token": conn.access_token,
-                "metric": "page_impressions,page_engaged_users,page_fans",
+                "metric": "page_views_total,page_post_engagements",
                 "period": "day",
-                "date_preset": "last_30d"
+                
             }
         )
         
@@ -235,7 +235,7 @@ async def fetch_instagram_stats(conn: SocialConnection, db: Session) -> dict:
             f"https://graph.facebook.com/v18.0/{conn.external_account_id}/insights",
             params={
                 "access_token": conn.access_token,
-                "metric": "impressions,reach,profile_views,follower_count",
+                "metric": "reach,profile_views,accounts_engaged",
                 "period": "day",
                 "metric_type": "total_value"
             }
