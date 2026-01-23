@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { AppLayout } from './components/layout';
@@ -25,6 +26,12 @@ function ProtectedRoute({ children }) {
 }
 
 function App() {
+  const { checkAuth } = useAuthStore();
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
   return (
     <BrowserRouter>
       <Routes>

@@ -5,6 +5,8 @@ from datetime import timedelta
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.security import verify_password, get_password_hash, create_access_token, get_current_user
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
 from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse, Token
 from pydantic import BaseModel
@@ -137,10 +139,33 @@ def change_password(
 
 
 @router.post("/refresh", response_model=Token)
-def refresh_token(current_user: User = Depends(get_current_user)):
-    """Refresh access token"""
-    access_token = create_access_token(
-        data={"sub": current_user.email},
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+def refresh_token(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+    db: Session = Depends(get_db)
+):
+    """Refresh access token - accetta anche token scaduti"""
+    token = credentials.credentials
+    
+    try:
+        # Decodifica SENZA verificare expiry
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+            options={"verify_exp": False}
+        )
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Token non valido")
+        
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Utente non trovato")
+        
+        access_token = create_access_token(
+            data={"sub": user.email},
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        return {"access_token": access_token, "token_type": "bearer"}
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Token non valido")
