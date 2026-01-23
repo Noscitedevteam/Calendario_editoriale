@@ -1,100 +1,240 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDataStore } from '../store/dataStore';
-import { brands, projects as projectsApi } from '../services/api';
-import { ArrowLeft, Plus, Calendar, Sparkles, Loader2, Settings, Trash2, Mic } from 'lucide-react';
+import { brands, projects as projectsApi, social as socialApi } from '../services/api';
+import { 
+  Plus, Calendar, Sparkles, Loader2, Trash2, Mic, Building2,
+  Linkedin, Instagram, Facebook, MapPin, Link2, CheckCircle, XCircle,
+  ExternalLink, Globe, Palette, Users
+} from 'lucide-react';
+
+const PLATFORMS = [
+  { id: 'linkedin', name: 'LinkedIn', icon: Linkedin, color: 'bg-[#0077b5]' },
+  { id: 'instagram', name: 'Instagram', icon: Instagram, color: 'bg-gradient-to-r from-[#f09433] via-[#dc2743] to-[#bc1888]' },
+  { id: 'facebook', name: 'Facebook', icon: Facebook, color: 'bg-[#1877f2]' },
+  { id: 'google_business', name: 'Google Business', icon: MapPin, color: 'bg-[#34a853]' },
+];
 
 export default function BrandDetail() {
-  const { brandId } = useParams();
+  const { id } = useParams();
   const navigate = useNavigate();
   const { projects, fetchProjects, isLoading } = useDataStore();
   const [brand, setBrand] = useState(null);
+  const [connections, setConnections] = useState([]);
+  const [loadingConnections, setLoadingConnections] = useState(true);
 
-  useEffect(function() {
-    brands.get(brandId).then(function(res) { setBrand(res.data); });
-    fetchProjects(brandId);
-  }, [brandId]);
+  useEffect(() => {
+    loadBrand();
+    fetchProjects(id);
+    loadConnections();
+  }, [id]);
 
-  if (!brand) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
-
-  const handleDeleteProject = async function(e, projectId) {
-    e.stopPropagation();
-    if (window.confirm('Sei sicuro di voler eliminare questo calendario?')) {
-      try {
-        await projectsApi.delete(projectId);
-        fetchProjects(brandId);
-      } catch (err) {
-        alert('Errore durante l eliminazione');
-      }
+  const loadBrand = async () => {
+    try {
+      const res = await brands.get(id);
+      setBrand(res.data);
+    } catch (err) {
+      console.error('Error loading brand:', err);
     }
   };
 
-  const goToVoiceInterview = function() {
-    navigate('/brand/' + brandId + '/voice-interview');
+  const loadConnections = async () => {
+    try {
+      const res = await socialApi.getConnections(id);
+      setConnections(res.data || []);
+    } catch (err) {
+      console.error('Error loading connections:', err);
+    } finally {
+      setLoadingConnections(false);
+    }
   };
 
-  const goToNewProject = function() {
-    navigate('/brand/' + brandId + '/new-project');
+  const handleDeleteProject = async (e, projectId) => {
+    e.stopPropagation();
+    if (!window.confirm('Sei sicuro di voler eliminare questo calendario?')) return;
+    
+    try {
+      await projectsApi.delete(projectId);
+      fetchProjects(id);
+    } catch (err) {
+      alert('Errore durante l\'eliminazione');
+    }
   };
 
-  const goToProject = function(projectId) {
-    navigate('/project/' + projectId);
+  const handleConnectSocial = async (platform) => {
+    try {
+      const res = await socialApi.getAuthUrl(id, platform);
+      window.location.href = res.data.auth_url;
+    } catch (err) {
+      alert('Errore nella connessione');
+    }
   };
+
+  const handleDisconnect = async (connectionId) => {
+    if (!window.confirm('Disconnettere questo account?')) return;
+    try {
+      await socialApi.disconnect(connectionId);
+      loadConnections();
+    } catch (err) {
+      alert('Errore nella disconnessione');
+    }
+  };
+
+  const getConnection = (platformId) => {
+    return connections.find(c => c.platform === platformId);
+  };
+
+  if (!brand) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="animate-spin text-[#3DAFA8]" size={32} />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <button onClick={function() { navigate('/dashboard'); }} className="flex items-center gap-2 text-gray-600 hover:text-[#3DAFA8] mb-2">
-            <ArrowLeft size={20} /> Dashboard
-          </button>
-          <div className="flex justify-between items-start">
+    <div className="max-w-7xl mx-auto space-y-6">
+      {/* Brand Header Card */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-gradient-to-br from-[#3DAFA8] to-[#2C3E50] rounded-2xl flex items-center justify-center">
+              <Building2 className="text-white" size={32} />
+            </div>
             <div>
               <h1 className="text-2xl font-bold text-[#2C3E50]">{brand.name}</h1>
-              <p className="text-sm text-gray-500">{brand.sector} - {brand.tone_of_voice}</p>
+              <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                {brand.sector && (
+                  <span className="flex items-center gap-1">
+                    <Users size={14} /> {brand.sector}
+                  </span>
+                )}
+                {brand.tone_of_voice && (
+                  <span className="flex items-center gap-1">
+                    <Palette size={14} /> {brand.tone_of_voice}
+                  </span>
+                )}
+                {brand.website && (
+                  <a 
+                    href={brand.website} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[#3DAFA8] hover:underline"
+                  >
+                    <Globe size={14} /> Website
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      {/* Social Connections */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <h2 className="text-lg font-semibold text-[#2C3E50] mb-4 flex items-center gap-2">
+          <Link2 className="text-[#3DAFA8]" /> Connessioni Social
+        </h2>
+        
+        {loadingConnections ? (
+          <div className="flex justify-center py-4">
+            <Loader2 className="animate-spin text-gray-400" size={24} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {PLATFORMS.map(platform => {
+              const connection = getConnection(platform.id);
+              const Icon = platform.icon;
+              
+              return (
+                <div
+                  key={platform.id}
+                  className={`p-4 rounded-xl border-2 transition-all ${
+                    connection 
+                      ? 'border-green-200 bg-green-50' 
+                      : 'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className={`w-10 h-10 ${platform.color} rounded-lg flex items-center justify-center`}>
+                      <Icon className="text-white" size={20} />
+                    </div>
+                    {connection ? (
+                      <CheckCircle className="text-green-500" size={20} />
+                    ) : (
+                      <XCircle className="text-gray-300" size={20} />
+                    )}
+                  </div>
+                  
+                  <p className="font-medium text-sm mb-1">{platform.name}</p>
+                  
+                  {connection ? (
+                    <>
+                      <p className="text-xs text-green-600 truncate mb-2">
+                        {connection.external_account_name || 'Connesso'}
+                      </p>
+                      <button
+                        onClick={() => handleDisconnect(connection.id)}
+                        className="text-xs text-red-500 hover:text-red-700"
+                      >
+                        Disconnetti
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handleConnectSocial(platform.id)}
+                      className="text-xs text-[#3DAFA8] hover:text-[#2C3E50] font-medium"
+                    >
+                      Connetti →
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Calendars Section */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-[#2C3E50] flex items-center gap-2">
             <Calendar className="text-[#3DAFA8]" /> Calendari Editoriali
           </h2>
           <div className="flex gap-3">
             <button
-              onClick={goToVoiceInterview}
-              className="flex items-center gap-2 bg-[#E89548] text-white px-5 py-2.5 rounded-lg hover:bg-[#d4823c] transition-colors"
-              title="Crea calendario con intervista AI"
+              onClick={() => navigate(`/brand/${id}/voice-interview`)}
+              className="flex items-center gap-2 bg-[#E89548] text-white px-4 py-2 rounded-lg hover:bg-[#d4823c] transition-colors"
             >
-              <Mic size={20} /> Intervista AI
+              <Mic size={18} /> Intervista AI
             </button>
             <button
-              onClick={goToNewProject}
-              className="flex items-center gap-2 bg-[#3DAFA8] text-white px-5 py-2.5 rounded-lg hover:bg-[#2C3E50] transition-colors"
+              onClick={() => navigate(`/brand/${id}/new-project`)}
+              className="flex items-center gap-2 bg-[#3DAFA8] text-white px-4 py-2 rounded-lg hover:bg-[#2C3E50] transition-colors"
             >
-              <Sparkles size={20} /> Wizard Manuale
+              <Sparkles size={18} /> Wizard Manuale
             </button>
           </div>
         </div>
 
         {isLoading ? (
-          <div className="text-center py-12"><Loader2 className="animate-spin mx-auto" /></div>
+          <div className="flex justify-center py-12">
+            <Loader2 className="animate-spin text-gray-400" size={32} />
+          </div>
         ) : projects.length === 0 ? (
-          <div className="bg-white rounded-xl p-12 text-center">
+          <div className="text-center py-12 bg-gray-50 rounded-xl">
             <Calendar size={48} className="mx-auto text-gray-300 mb-4" />
             <h3 className="text-lg font-medium text-gray-700 mb-2">Nessun calendario</h3>
             <p className="text-gray-500 mb-6">Crea il tuo primo calendario editoriale</p>
             <div className="flex gap-4 justify-center">
               <button
-                onClick={goToVoiceInterview}
+                onClick={() => navigate(`/brand/${id}/voice-interview`)}
                 className="inline-flex items-center gap-2 bg-[#E89548] text-white px-6 py-3 rounded-lg hover:bg-[#d4823c]"
               >
                 <Mic size={20} /> Intervista AI
               </button>
               <button
-                onClick={goToNewProject}
+                onClick={() => navigate(`/brand/${id}/new-project`)}
                 className="inline-flex items-center gap-2 bg-[#3DAFA8] text-white px-6 py-3 rounded-lg hover:bg-[#2C3E50]"
               >
                 <Plus size={20} /> Wizard Manuale
@@ -102,33 +242,47 @@ export default function BrandDetail() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map(function(project) {
-              return (
-                <div
-                  key={project.id}
-                  onClick={function() { goToProject(project.id); }}
-                  className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer relative group"
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.map(project => (
+              <div
+                key={project.id}
+                onClick={() => navigate(`/project/${project.id}`)}
+                className="p-5 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-all group relative"
+              >
+                <button
+                  onClick={(e) => handleDeleteProject(e, project.id)}
+                  className="absolute top-3 right-3 p-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
-                  <button
-                    onClick={function(e) { handleDeleteProject(e, project.id); }}
-                    className="absolute top-3 right-3 p-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Elimina calendario"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                  <h3 className="font-semibold text-[#2C3E50] mb-2">{project.name}</h3>
-                  <p className="text-sm text-gray-500 mb-4">{project.description || 'Nessuna descrizione'}</p>
-                  <div className="flex items-center justify-between text-xs text-gray-400">
-                    <span>{project.posts_count || 0} post</span>
-                    <span>{new Date(project.created_at).toLocaleDateString('it-IT')}</span>
+                  <Trash2 size={16} />
+                </button>
+                
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-[#3DAFA8]/10 rounded-lg flex items-center justify-center">
+                    <Calendar className="text-[#3DAFA8]" size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-[#2C3E50]">{project.name}</h3>
+                    <p className="text-xs text-gray-400">
+                      {new Date(project.created_at).toLocaleDateString('it-IT')}
+                    </p>
                   </div>
                 </div>
-              );
-            })}
+                
+                <p className="text-sm text-gray-500 mb-3 line-clamp-2">
+                  {project.description || 'Nessuna descrizione'}
+                </p>
+                
+                <div className="flex items-center justify-between pt-3 border-t border-gray-200">
+                  <span className="text-sm text-gray-500">
+                    {project.posts_count || 0} post
+                  </span>
+                  <ExternalLink className="text-gray-400 group-hover:text-[#3DAFA8]" size={16} />
+                </div>
+              </div>
+            ))}
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

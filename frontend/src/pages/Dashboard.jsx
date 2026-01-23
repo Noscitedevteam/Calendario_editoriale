@@ -1,193 +1,241 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
-import { useDataStore } from '../store/dataStore';
-import { Plus, Calendar, Building2, LogOut, Sparkles, Trash2, X, Shield, User } from 'lucide-react';
+import { 
+  Building2, Calendar, Plus, TrendingUp, Clock, CheckCircle, 
+  Image, FileText, Loader2, ArrowRight, Sparkles
+} from 'lucide-react';
+import { brands as brandsApi } from '../services/api';
 
 export default function Dashboard() {
-  const { user, logout } = useAuthStore();
-  const { brands, fetchBrands, createBrand, deleteBrand, isLoading } = useDataStore();
-  const [showNewBrand, setShowNewBrand] = useState(false);
-  const [newBrand, setNewBrand] = useState({ name: '', sector: '', tone_of_voice: '' });
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const navigate = useNavigate();
+  const [brands, setBrands] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalBrands: 0,
+    totalCalendars: 0,
+    totalPosts: 0,
+    scheduledPosts: 0,
+    publishedPosts: 0,
+  });
 
   useEffect(() => {
-    fetchBrands();
+    loadData();
   }, []);
 
-  const handleCreateBrand = async (e) => {
-    e.preventDefault();
-    const result = await createBrand(newBrand);
-    if (result.success) {
-      setShowNewBrand(false);
-      setNewBrand({ name: '', sector: '', tone_of_voice: '' });
+  const loadData = async () => {
+    try {
+      const res = await brandsApi.list();
+      setBrands(res.data);
+      
+      // Calculate stats
+      let totalCalendars = 0;
+      let totalPosts = 0;
+      
+      res.data.forEach(brand => {
+        totalCalendars += brand.projects_count || 0;
+        totalPosts += brand.posts_count || 0;
+      });
+
+      setStats({
+        totalBrands: res.data.length,
+        totalCalendars,
+        totalPosts,
+        scheduledPosts: Math.floor(totalPosts * 0.3), // Placeholder
+        publishedPosts: Math.floor(totalPosts * 0.5), // Placeholder
+      });
+    } catch (err) {
+      console.error('Error loading dashboard:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDelete = async (id) => {
-    const result = await deleteBrand(id);
-    if (result.success) {
-      setDeleteConfirm(null);
-    }
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="animate-spin text-[#3DAFA8]" size={32} />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-[#2C3E50]">Noscite Calendar</h1>
-            <p className="text-sm text-gray-500">Benvenuto, {user?.full_name || user?.email}</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/profile')}
-              className="flex items-center gap-2 text-gray-600 hover:text-[#3DAFA8]"
-              title="Il mio Profilo"
-            >
-              <User size={20} />
-            </button>
-            <button
-              onClick={() => navigate('/admin')}
-              className="flex items-center gap-2 text-gray-600 hover:text-[#3DAFA8]"
-              title="Admin Dashboard"
-            >
-              <Shield size={20} />
-            </button>
-            <button
-              onClick={() => { logout(); navigate('/login'); }}
-              className="flex items-center gap-2 text-gray-600 hover:text-red-600"
-            >
-              <LogOut size={20} /> Esci
-            </button>
-          </div>
-        </div>
-      </header>
+    <div className="max-w-7xl mx-auto space-y-6">
+      {/* Welcome Banner */}
+      <div className="bg-gradient-to-r from-[#3DAFA8] to-[#2C3E50] rounded-2xl p-6 text-white">
+        <h2 className="text-2xl font-bold mb-2">Benvenuto su Noscite Calendar! 👋</h2>
+        <p className="text-white/80">Gestisci i tuoi calendari editoriali con l'aiuto dell'AI</p>
+      </div>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Brands Section */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-[#2C3E50] flex items-center gap-2">
-            <Building2 className="text-[#3DAFA8]" /> I tuoi Brand
-          </h2>
-          <button
-            onClick={() => setShowNewBrand(true)}
-            className="flex items-center gap-2 bg-[#3DAFA8] text-white px-4 py-2 rounded-lg hover:bg-[#2C3E50] transition-colors"
-          >
-            <Plus size={20} /> Nuovo Brand
-          </button>
-        </div>
-
-        {/* New Brand Form */}
-        {showNewBrand && (
-          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-            <h3 className="text-lg font-semibold mb-4">Crea nuovo Brand</h3>
-            <form onSubmit={handleCreateBrand} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <input
-                type="text"
-                placeholder="Nome brand *"
-                value={newBrand.name}
-                onChange={(e) => setNewBrand({...newBrand, name: e.target.value})}
-                className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#3DAFA8]"
-                required
-              />
-              <input
-                type="text"
-                placeholder="Settore"
-                value={newBrand.sector}
-                onChange={(e) => setNewBrand({...newBrand, sector: e.target.value})}
-                className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#3DAFA8]"
-              />
-              <select
-                value={newBrand.tone_of_voice}
-                onChange={(e) => setNewBrand({...newBrand, tone_of_voice: e.target.value})}
-                className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[#3DAFA8]"
-              >
-                <option value="">Tono di voce</option>
-                <option value="formale">Formale</option>
-                <option value="informale">Informale</option>
-                <option value="tecnico">Tecnico</option>
-                <option value="amichevole">Amichevole</option>
-              </select>
-              <div className="md:col-span-3 flex gap-2">
-                <button type="submit" className="bg-[#3DAFA8] text-white px-6 py-2 rounded-lg hover:bg-[#2C3E50]">
-                  Crea Brand
-                </button>
-                <button type="button" onClick={() => setShowNewBrand(false)} className="px-6 py-2 border rounded-lg">
-                  Annulla
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Delete Confirmation Modal */}
-        {deleteConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-              <h3 className="text-lg font-semibold text-red-600 mb-2">Conferma eliminazione</h3>
-              <p className="text-gray-600 mb-4">
-                Sei sicuro di voler eliminare questo brand? Verranno eliminati anche tutti i progetti e i post associati.
-              </p>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="px-4 py-2 border rounded-lg"
-                >
-                  Annulla
-                </button>
-                <button
-                  onClick={() => handleDelete(deleteConfirm)}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                >
-                  Elimina
-                </button>
-              </div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl p-5 shadow-sm border-l-4 border-[#3DAFA8]">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Brand</p>
+              <p className="text-3xl font-bold text-[#2C3E50]">{stats.totalBrands}</p>
+            </div>
+            <div className="w-12 h-12 bg-[#3DAFA8]/10 rounded-xl flex items-center justify-center">
+              <Building2 className="text-[#3DAFA8]" size={24} />
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Brands Grid */}
-        {isLoading ? (
-          <div className="text-center py-12 text-gray-500">Caricamento...</div>
-        ) : brands.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
-            <Building2 size={48} className="mx-auto text-gray-300 mb-4" />
-            <h3 className="text-lg font-medium text-gray-600">Nessun brand</h3>
-            <p className="text-gray-400 mt-1">Crea il tuo primo brand per iniziare</p>
+        <div className="bg-white rounded-xl p-5 shadow-sm border-l-4 border-[#E89548]">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Calendari</p>
+              <p className="text-3xl font-bold text-[#2C3E50]">{stats.totalCalendars}</p>
+            </div>
+            <div className="w-12 h-12 bg-[#E89548]/10 rounded-xl flex items-center justify-center">
+              <Calendar className="text-[#E89548]" size={24} />
+            </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {brands.map((brand) => (
-              <div
-                key={brand.id}
-                className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow border-l-4 border-[#3DAFA8] relative group"
+        </div>
+
+        <div className="bg-white rounded-xl p-5 shadow-sm border-l-4 border-blue-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Post Totali</p>
+              <p className="text-3xl font-bold text-[#2C3E50]">{stats.totalPosts}</p>
+            </div>
+            <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
+              <FileText className="text-blue-500" size={24} />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 shadow-sm border-l-4 border-green-500">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-500">Pubblicati</p>
+              <p className="text-3xl font-bold text-[#2C3E50]">{stats.publishedPosts}</p>
+            </div>
+            <div className="w-12 h-12 bg-green-500/10 rounded-xl flex items-center justify-center">
+              <CheckCircle className="text-green-500" size={24} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Recent Brands */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-lg text-[#2C3E50]">I tuoi Brand</h3>
+            <button
+              onClick={() => navigate('/brands')}
+              className="text-[#3DAFA8] hover:text-[#2C3E50] text-sm font-medium flex items-center gap-1"
+            >
+              Vedi tutti <ArrowRight size={16} />
+            </button>
+          </div>
+
+          {brands.length === 0 ? (
+            <div className="text-center py-8">
+              <Building2 size={48} className="mx-auto text-gray-300 mb-4" />
+              <p className="text-gray-500 mb-4">Nessun brand ancora</p>
+              <button
+                onClick={() => navigate('/brands')}
+                className="inline-flex items-center gap-2 bg-[#3DAFA8] text-white px-4 py-2 rounded-lg hover:bg-[#2C3E50]"
               >
-                <button
-                  onClick={(e) => { e.stopPropagation(); setDeleteConfirm(brand.id); }}
-                  className="absolute top-3 right-3 p-2 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                <Plus size={18} /> Crea il primo brand
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {brands.slice(0, 4).map(brand => (
+                <div
+                  key={brand.id}
+                  onClick={() => navigate(`/brand/${brand.id}`)}
+                  className="flex items-center justify-between p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-all group"
                 >
-                  <Trash2 size={18} />
-                </button>
-                <div onClick={() => navigate(`/brand/${brand.id}`)} className="cursor-pointer">
-                  <h3 className="text-lg font-semibold text-[#2C3E50]">{brand.name}</h3>
-                  <p className="text-sm text-gray-500 mt-1">{brand.sector || 'Settore non specificato'}</p>
-                  <div className="flex items-center gap-4 mt-4 text-sm text-gray-400">
-                    <span className="flex items-center gap-1">
-                      <Calendar size={16} /> Progetti
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Sparkles size={16} /> {brand.tone_of_voice || 'Standard'}
-                    </span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-[#3DAFA8] to-[#2C3E50] rounded-lg flex items-center justify-center">
+                      <Building2 className="text-white" size={20} />
+                    </div>
+                    <div>
+                      <p className="font-medium text-[#2C3E50]">{brand.name}</p>
+                      <p className="text-sm text-gray-500">{brand.sector || 'Nessun settore'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className="text-sm font-medium">{brand.projects_count || 0}</p>
+                      <p className="text-xs text-gray-400">calendari</p>
+                    </div>
+                    <ArrowRight className="text-gray-400 group-hover:text-[#3DAFA8] transition-colors" size={20} />
                   </div>
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Quick Actions */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h3 className="font-semibold text-lg text-[#2C3E50] mb-4">Azioni Rapide</h3>
+          <div className="space-y-3">
+            <button
+              onClick={() => navigate('/brands')}
+              className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-[#3DAFA8] to-[#2C3E50] text-white rounded-xl hover:shadow-lg transition-all"
+            >
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                <Plus size={20} />
               </div>
-            ))}
+              <div className="text-left">
+                <p className="font-medium">Nuovo Brand</p>
+                <p className="text-sm text-white/70">Aggiungi un nuovo brand</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => navigate('/ai-assistant')}
+              className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-[#E89548] to-[#d4823c] text-white rounded-xl hover:shadow-lg transition-all"
+            >
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                <Sparkles size={20} />
+              </div>
+              <div className="text-left">
+                <p className="font-medium">AI Assistant</p>
+                <p className="text-sm text-white/70">Crea con intervista vocale</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => navigate('/documents')}
+              className="w-full flex items-center gap-3 p-4 bg-gray-100 text-[#2C3E50] rounded-xl hover:bg-gray-200 transition-all"
+            >
+              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                <FileText size={20} className="text-[#3DAFA8]" />
+              </div>
+              <div className="text-left">
+                <p className="font-medium">Documenti</p>
+                <p className="text-sm text-gray-500">Carica knowledge base</p>
+              </div>
+            </button>
           </div>
-        )}
-      </main>
+        </div>
+      </div>
+
+      {/* Activity / Tips Section */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <h3 className="font-semibold text-lg text-[#2C3E50] mb-4">💡 Suggerimenti</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 bg-blue-50 rounded-xl">
+            <p className="font-medium text-blue-800 mb-1">Carica Documenti</p>
+            <p className="text-sm text-blue-600">Migliora la qualità dei contenuti AI caricando documenti sul tuo brand</p>
+          </div>
+          <div className="p-4 bg-green-50 rounded-xl">
+            <p className="font-medium text-green-800 mb-1">Collega i Social</p>
+            <p className="text-sm text-green-600">Pubblica automaticamente collegando i tuoi account social</p>
+          </div>
+          <div className="p-4 bg-purple-50 rounded-xl">
+            <p className="font-medium text-purple-800 mb-1">Usa l'AI Assistant</p>
+            <p className="text-sm text-purple-600">Crea calendari con un'intervista vocale guidata dall'AI</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

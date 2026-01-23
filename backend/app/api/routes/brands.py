@@ -34,10 +34,21 @@ def list_brands(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    from app.models.project import Project
+    from app.models.post import Post
+    
     # Filter by user's organization_id
     brands = db.query(Brand).filter(Brand.organization_id == current_user.organization_id).all()
-    return [
-        {
+    
+    result = []
+    for b in brands:
+        # Count projects for this brand
+        projects_count = db.query(Project).filter(Project.brand_id == b.id).count()
+        
+        # Count posts for all projects of this brand
+        posts_count = db.query(Post).join(Project).filter(Project.brand_id == b.id).count()
+        
+        result.append({
             "id": b.id,
             "name": b.name,
             "sector": b.sector,
@@ -46,10 +57,13 @@ def list_brands(
             "description": b.description,
             "target_audience": b.target_audience,
             "colors": b.colors,
-            "style_guide": b.style_guide
-        }
-        for b in brands
-    ]
+            "style_guide": b.style_guide,
+            "website": b.website if hasattr(b, 'website') else None,
+            "projects_count": projects_count,
+            "posts_count": posts_count
+        })
+    
+    return result
 
 @router.get("/{brand_id}")
 def get_brand(

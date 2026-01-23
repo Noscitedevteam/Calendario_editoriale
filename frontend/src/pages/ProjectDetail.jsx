@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { posts as postsApi, projects as projectsApi, generation } from '../services/api';
 import PostEditModal from '../components/PostEditModal';
+import QuickAddPostModal from '../components/QuickAddPostModal';
 import BrandDocuments from '../components/BrandDocuments';
 
 import GenerationProgress from '../components/GenerationProgress';
@@ -24,7 +25,7 @@ const MONTHS = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
                 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
 
 export default function ProjectDetail() {
-  const { projectId: id } = useParams();
+  const { id } = useParams();
   const navigate = useNavigate();
   
   // Core state
@@ -37,6 +38,8 @@ export default function ProjectDetail() {
   // View mode: 'calendar' or 'settings'
   const [viewMode, setViewMode] = useState('calendar');
   const [expandedDay, setExpandedDay] = useState(null);
+  const [quickAddDate, setQuickAddDate] = useState(null);
+  const [showQuickAddModal, setShowQuickAddModal] = useState(false);
   
   // Edit modal
   const [editingPost, setEditingPost] = useState(null);
@@ -332,6 +335,16 @@ export default function ProjectDetail() {
   const exitSelectionMode = () => {
     setSelectionMode(false);
     setSelectedPostIds([]);
+  };
+
+  // Quick add post for specific date
+  const openQuickAdd = (date) => {
+    setQuickAddDate(date);
+    setShowQuickAddModal(true);
+  };
+
+  const handleQuickPostCreated = (newPost) => {
+    setPostsList(prev => [...prev, newPost]);
   };
 
   // Add manual post
@@ -718,15 +731,26 @@ export default function ProjectDetail() {
                   <div
                     key={idx}
                     className={`min-h-[120px] border-r border-b last:border-r-0 p-2 ${
-                      day.currentMonth ? 'bg-white' : 'bg-gray-50'
+                      day.currentMonth ? 'bg-white group' : 'bg-gray-50'
                     }`}
                   >
-                    <div className={`text-sm mb-1 ${
-                      isToday 
-                        ? 'w-7 h-7 bg-[#3DAFA8] text-white rounded-full flex items-center justify-center font-bold' 
-                        : day.currentMonth ? 'text-gray-900' : 'text-gray-400'
-                    }`}>
-                      {day.date.getDate()}
+                    <div className="flex items-center justify-between mb-1">
+                      <div className={`text-sm ${
+                        isToday 
+                          ? 'w-7 h-7 bg-[#3DAFA8] text-white rounded-full flex items-center justify-center font-bold' 
+                          : day.currentMonth ? 'text-gray-900' : 'text-gray-400'
+                      }`}>
+                        {day.date.getDate()}
+                      </div>
+                      {day.currentMonth && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openQuickAdd(day.date); }}
+                          className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-[#3DAFA8] hover:bg-[#3DAFA8]/10 rounded transition-all opacity-0 group-hover:opacity-100"
+                          title="Aggiungi post"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      )}
                     </div>
                     
                     <div className="space-y-1">
@@ -1593,6 +1617,17 @@ export default function ProjectDetail() {
       )}
 
       {/* Post Edit Modal */}
+      {/* Quick Add Post Modal */}
+      <QuickAddPostModal
+        isOpen={showQuickAddModal}
+        onClose={() => setShowQuickAddModal(false)}
+        selectedDate={quickAddDate}
+        projectId={id}
+        projectPlatforms={project?.platforms || []}
+        projectPillars={project?.pillars || []}
+        onPostCreated={handleQuickPostCreated}
+      />
+
       {editingPost && (
         <PostEditModal
           post={editingPost}

@@ -372,3 +372,31 @@ def get_stats(
         "projects": projects_count,
         "posts": posts_count
     }
+
+# === HARD DELETE USER (solo superuser) ===
+
+@router.delete("/users/{user_id}/permanent")
+def permanent_delete_user(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_superuser)
+):
+    """Elimina definitivamente un utente (solo superuser)"""
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Non puoi eliminare te stesso")
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+    
+    user_email = user.email
+    
+    # Elimina definitivamente
+    db.delete(user)
+    db.commit()
+    
+    log_activity(db, current_user, "permanent_delete", "user", user_id, user_email, request=request)
+    
+    return {"message": f"Utente {user_email} eliminato definitivamente"}

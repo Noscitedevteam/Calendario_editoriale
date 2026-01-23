@@ -83,7 +83,18 @@ async def publish_single_post(db: Session, post: Post):
                 external_post_id=result.get("external_post_id"),
                 external_post_url=result.get("external_post_url")
             )
-            db.merge(publication)
+            existing = db.query(PostPublication).filter(
+                PostPublication.post_id == post.id,
+                PostPublication.social_connection_id == connection.id
+            ).first()
+            if existing:
+                existing.status = "published"
+                existing.published_at = publication.published_at
+                existing.external_post_id = publication.external_post_id
+                existing.external_post_url = publication.external_post_url
+            else:
+                db.add(publication)
+            db.commit()  # Commit subito per evitare rollback
             logger.info(f"Post {post.id} published successfully: {result.get('external_post_url')}")
         else:
             post.publication_status = "failed"
@@ -94,7 +105,16 @@ async def publish_single_post(db: Session, post: Post):
                 status="failed",
                 error_message=result.get("error", "Unknown error")
             )
-            db.merge(publication)
+            existing = db.query(PostPublication).filter(
+                PostPublication.post_id == post.id,
+                PostPublication.social_connection_id == connection.id
+            ).first()
+            if existing:
+                existing.status = "failed"
+                existing.error_message = publication.error_message
+            else:
+                db.add(publication)
+            db.commit()  # Commit subito per evitare rollback
             logger.error(f"Post {post.id} failed: {result.get('error')}")
         
         connection.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)

@@ -149,9 +149,7 @@ class PublisherService:
             content = post.content
             if post.hashtags:
                 hashtags = " ".join([f"#{h}" if not h.startswith("#") else h for h in post.hashtags])
-                content = f"{content}
-
-{hashtags}"
+                content = f"{content}\n{hashtags}"
             
             page_id = connection.external_account_id
             
@@ -242,7 +240,7 @@ class PublisherService:
                 logger.error(f"Facebook publish error: {result}")
                 return {"success": False, "error": result.get("error", {}).get("message", "Unknown error")}
     
-    async def publish_to_instagram    async def publish_to_instagram    async def publish_to_instagram(self, post: Post, connection: SocialConnection) -> dict:
+    async def publish_to_instagram(self, post: Post, connection: SocialConnection) -> dict:
         """Pubblica su Instagram (supporta caroselli)"""
         if not post.image_url:
             return {"success": False, "error": "Instagram richiede un'immagine"}

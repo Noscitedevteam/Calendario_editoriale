@@ -110,7 +110,7 @@ export const social = {
 };
 
 export const documents = {
-  list: (brandId) => api.get(`/documents/brand/${brandId}`),
+  list: (brandId) => api.get(`/documents/list/${brandId}`),
   upload: (brandId, formData) => api.post(`/documents/upload/${brandId}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
@@ -122,5 +122,5 @@ export const subscriptions = {
   getCurrentSubscription: () => api.get('/subscriptions/current'),
   subscribe: (planId) => api.post('/subscriptions/subscribe', { plan_id: planId }),
   cancel: () => api.post('/subscriptions/cancel'),
-  getUsage: () => api.get('/subscriptions/usage'),
+  getUsage: () => api.get('/subscriptions/usage/my'),
 };
