@@ -307,50 +307,6 @@ class PublisherService:
                 await asyncio.sleep(5)
                 
             else:
-            # Reel / Video
-            elif post.content_type == "reel" or post.media_type == "video":
-                logger.info(f"Publishing Instagram Reel with video: {post.image_url}")
-                video_url = make_absolute_url(post.image_url)
-                container_response = await client.post(
-                    f"https://graph.facebook.com/v18.0/{ig_account_id}/media",
-                    data={
-                        "media_type": "REELS",
-                        "video_url": video_url,
-                        "caption": content,
-                        "access_token": connection.access_token
-                    }
-                )
-                container_result = container_response.json()
-                
-                if "id" not in container_result:
-                    logger.error(f"Instagram Reel container error: {container_result}")
-                    return {"success": False, "error": container_result.get("error", {}).get("message", "Reel container creation failed")}
-                
-                container_id = container_result["id"]
-                logger.info(f"Created Reel container: {container_id}")
-                
-                # Polling: aspetta che il video sia processato da Instagram
-                import asyncio
-                for attempt in range(30):
-                    await asyncio.sleep(5)
-                    status_response = await client.get(
-                        f"https://graph.facebook.com/v18.0/{container_id}",
-                        params={
-                            "fields": "status_code",
-                            "access_token": connection.access_token
-                        }
-                    )
-                    status_result = status_response.json()
-                    status_code = status_result.get("status_code")
-                    logger.info(f"Reel processing status (attempt {attempt+1}): {status_code}")
-                    if status_code == "FINISHED":
-                        break
-                    elif status_code == "ERROR":
-                        return {"success": False, "error": "Instagram video processing failed"}
-                else:
-                    return {"success": False, "error": "Instagram video processing timeout (150s)"}
-
-
                 # Post singola immagine
                 container_response = await client.post(
                     f"https://graph.facebook.com/v18.0/{ig_account_id}/media",

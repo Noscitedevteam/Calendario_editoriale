@@ -28,6 +28,7 @@ class Organization(Base):
     # Enterprise custom
     custom_limits = Column(JSON)
     notes = Column(Text)
+    api_key_hash = Column(String(255))
     
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

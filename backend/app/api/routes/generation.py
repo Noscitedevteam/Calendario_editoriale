@@ -18,6 +18,7 @@ from app.models.brand import Brand
 from app.models.user import User
 from app.services.claude_service import generate_calendar_posts
 from app.services.generation_tracker import update_generation_status, get_generation_status_cache, clear_generation_status
+from app.api.routes.subscriptions import increment_usage
 from app.services.persona_analyzer import analyze_buyer_personas, get_default_personas
 from app.services.url_analyzer import get_brand_context_from_urls
 from app.api.routes.auth import get_current_user
@@ -301,7 +302,7 @@ def run_generation(project_id: int):
         # Genera con async
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        posts, updated_personas = loop.run_until_complete(
+        posts, updated_personas, total_tokens_used = loop.run_until_complete(
             generate_calendar_posts(
                 brand_name=brand.name,
                 brand_info=brand_info,
@@ -356,6 +357,17 @@ def run_generation(project_id: int):
         # Aggiorna personas se rigenerate
         if updated_personas:
             project.buyer_personas = updated_personas
+        
+        # === USAGE TRACKING ===
+        try:
+            org_id = brand.organization_id if hasattr(brand, "organization_id") else None
+            if org_id:
+                increment_usage(db, org_id, calendars=1, tokens=total_tokens_used)
+                logger.info(f"[GEN] Usage tracked: org={org_id}, tokens={total_tokens_used}, calendars=1")
+            else:
+                logger.warning("[GEN] No organization_id on brand, usage not tracked")
+        except Exception as usage_err:
+            logger.error(f"[GEN] Usage tracking error: {usage_err}")
         
         project.status = ProjectStatus.review
         db.commit()

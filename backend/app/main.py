@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.api.routes import auth, brands, projects, posts, generation, export, admin, oauth, social, social_stats, documents, voice_profiling, subscriptions
+from app.api.routes import notifications, auth, brands, projects, posts, generation, export, admin, oauth, social, social_stats, documents, voice_profiling, subscriptions, public_api, api_keys
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -33,9 +33,13 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(oauth.router, prefix="/api/oauth", tags=["OAuth"])
 app.include_router(social.router, prefix="/api/social", tags=["Social"])
 app.include_router(social_stats.router, prefix="/api/social/stats", tags=["Social Stats"])
+app.include_router(notifications.router, prefix="/api", tags=["Notifications"])
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 app.include_router(voice_profiling.router, prefix="/api", tags=["Voice Profiling"])
 app.include_router(subscriptions.router, prefix="/api/subscriptions", tags=["Subscriptions"])
+app.include_router(public_api.router, prefix="/api/v1", tags=["Public API"])
+app.include_router(api_keys.router, prefix="/api/api-keys", tags=["API Keys Management"])
+app.include_router(public_api.router, prefix="/api/v1", tags=["Public API"])
 
 @app.get("/")
 def root():

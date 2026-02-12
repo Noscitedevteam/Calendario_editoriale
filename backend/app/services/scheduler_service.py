@@ -9,6 +9,7 @@ from app.models.social_connection import SocialConnection, PostPublication
 from app.models.project import Project
 from app.models.brand import Brand
 from app.services.publisher_service import publisher_service
+from app.services.notification_service import notify_post_published, notify_post_failed
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,7 @@ async def publish_single_post(db: Session, post: Post):
                 db.add(publication)
             db.commit()  # Commit subito per evitare rollback
             logger.info(f"Post {post.id} published successfully: {result.get('external_post_url')}")
+            notify_post_published(db, post, project)
         else:
             post.publication_status = "failed"
             
@@ -116,6 +118,7 @@ async def publish_single_post(db: Session, post: Post):
                 db.add(publication)
             db.commit()  # Commit subito per evitare rollback
             logger.error(f"Post {post.id} failed: {result.get('error')}")
+            notify_post_failed(db, post, project, result.get("error", "Unknown error"))
         
         connection.last_used_at = datetime.now(timezone.utc).replace(tzinfo=None)
         

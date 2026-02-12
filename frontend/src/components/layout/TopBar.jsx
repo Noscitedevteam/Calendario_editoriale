@@ -1,4 +1,5 @@
-import { Bell, HelpCircle, Search } from 'lucide-react';
+import { HelpCircle, Search } from 'lucide-react';
+import NotificationBell from '../NotificationBell';
 import { useLocation } from 'react-router-dom';
 
 const pageTitles = {
@@ -43,7 +44,7 @@ export default function TopBar() {
   const pageInfo = getPageInfo();
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-30">
+    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 sticky top-0 z-[60]">
       {/* Left: Page Title */}
       <div>
         <h1 className="text-xl font-bold text-[#2C3E50]">{pageInfo.title}</h1>
@@ -65,10 +66,7 @@ export default function TopBar() {
         </div>
 
         {/* Notifications */}
-        <button className="relative p-2 text-gray-500 hover:text-[#3DAFA8] hover:bg-gray-100 rounded-lg transition-all">
-          <Bell size={20} />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-        </button>
+        <NotificationBell />
 
         {/* Help */}
         <button className="p-2 text-gray-500 hover:text-[#3DAFA8] hover:bg-gray-100 rounded-lg transition-all">

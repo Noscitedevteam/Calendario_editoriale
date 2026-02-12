@@ -22,6 +22,7 @@ import SelectGoogleLocation from './pages/SelectGoogleLocation';
 import SelectLinkedInOrg from './pages/SelectLinkedInOrg';
 import DocumentsPage from './pages/DocumentsPage';
 import SettingsPage from './pages/SettingsPage';
+import ApiKeys from './pages/ApiKeys';
 
 // Protected Route wrapper
 function ProtectedRoute({ children }) {
@@ -82,6 +83,7 @@ function App() {
           {/* Settings & Profile */}
           <Route path="settings" element={<SettingsPage />} />
           <Route path="profile" element={<Profile />} />
+          <Route path="api-keys" element={<ApiKeys />} />
           
           {/* Admin */}
           <Route path="admin" element={<AdminDashboard />} />

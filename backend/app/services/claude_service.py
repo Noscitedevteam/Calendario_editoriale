@@ -101,6 +101,7 @@ async def generate_calendar_posts(
     
     # STEP 2: Genera contenuti in batch
     all_posts = []
+    total_tokens_used = 0
     total_days = (end_date - start_date).days + 1
     batch_size = 7
     batches = (total_days + batch_size - 1) // batch_size
@@ -120,7 +121,7 @@ async def generate_calendar_posts(
             logger.info("[CLAUDE] Waiting 8s for rate limit...")
             await asyncio.sleep(8)
         
-        posts = await generate_batch(
+        posts, batch_tokens = await generate_batch(
             client=client,
             brand_name=brand_name,
             brand_info=brand_info,
@@ -141,13 +142,14 @@ async def generate_calendar_posts(
         
         logger.info(f"[CLAUDE] Batch {batch_num + 1} returned {len(posts)} posts")
         all_posts.extend(posts)
+        total_tokens_used += batch_tokens
     
     # STEP 3: Redistribuisci con scheduling da personas
     all_posts = redistribute_posts_with_personas(all_posts, posts_per_week, start_date, end_date, buyer_personas)
     
     logger.info(f"[CLAUDE] Total posts generated: {len(all_posts)}")
     
-    return all_posts, buyer_personas
+    return all_posts, buyer_personas, total_tokens_used
 
 
 async def generate_batch(
@@ -284,6 +286,10 @@ Rispondi SOLO con il JSON array, senza markdown.
             messages=[{"role": "user", "content": prompt}]
         )
         
+        # Token tracking
+        batch_tokens = getattr(response.usage, "input_tokens", 0) + getattr(response.usage, "output_tokens", 0)
+        logger.info(f"[CLAUDE] Batch tokens: {batch_tokens} (in={response.usage.input_tokens}, out={response.usage.output_tokens})")
+        
         content = response.content[0].text.strip()
         logger.info(f"[CLAUDE] Response length: {len(content)} chars")
         
@@ -297,15 +303,15 @@ Rispondi SOLO con il JSON array, senza markdown.
         posts = json.loads(content)
         logger.info(f"[CLAUDE] Parsed {len(posts)} posts")
         
-        return posts
+        return posts, batch_tokens
         
     except json.JSONDecodeError as e:
         logger.error(f"[CLAUDE] JSON parse error: {e}")
         logger.error(f"[CLAUDE] Raw content: {content[:500]}")
-        return []
+        return [], 0
     except Exception as e:
         logger.error(f"[CLAUDE] API error: {e}")
-        return []
+        return [], 0
 
 
 def format_personas_for_prompt(personas_data: dict) -> str:
@@ -367,7 +373,7 @@ def redistribute_posts_with_personas(
     Redistribuisce i post usando lo scheduling delle buyer personas.
     """
     if not posts:
-        return []
+        return [], 0
     
     logger.info(f"[CLAUDE] Redistributing {len(posts)} posts with persona-based scheduling")
     
@@ -515,6 +521,10 @@ Rispondi SOLO con il JSON array.
             messages=[{"role": "user", "content": prompt}]
         )
         
+        # Token tracking
+        batch_tokens = getattr(response.usage, "input_tokens", 0) + getattr(response.usage, "output_tokens", 0)
+        logger.info(f"[CLAUDE] Batch tokens: {batch_tokens} (in={response.usage.input_tokens}, out={response.usage.output_tokens})")
+        
         content = response.content[0].text.strip()
         
         if content.startswith("```"):
@@ -527,7 +537,7 @@ Rispondi SOLO con il JSON array.
         
     except Exception as e:
         logger.error(f"[CLAUDE] generate_editorial_plan error: {e}")
-        return []
+        return [], 0
 
 
 def regenerate_single_post(
@@ -579,6 +589,10 @@ Rispondi SOLO con il JSON.
             messages=[{"role": "user", "content": prompt}]
         )
         
+        # Token tracking
+        batch_tokens = getattr(response.usage, "input_tokens", 0) + getattr(response.usage, "output_tokens", 0)
+        logger.info(f"[CLAUDE] Batch tokens: {batch_tokens} (in={response.usage.input_tokens}, out={response.usage.output_tokens})")
+        
         content = response.content[0].text.strip()
         
         if content.startswith("```"):
@@ -587,11 +601,13 @@ Rispondi SOLO con il JSON.
                 content = content[4:]
         content = content.strip()
         
-        return json.loads(content)
+        result = json.loads(content)
+        result["_tokens_used"] = regen_tokens
+        return result
         
     except Exception as e:
         logger.error(f"[CLAUDE] regenerate_single_post error: {e}")
-        return {"content": post_content}
+        return {"content": post_content, "_tokens_used": 0}
 
 
 def generate_image_prompt(
@@ -639,8 +655,11 @@ Rispondi SOLO con il prompt in inglese, senza altro testo.
             messages=[{"role": "user", "content": prompt}]
         )
         
-        return response.content[0].text.strip()
+        img_prompt_tokens = getattr(response.usage, "input_tokens", 0) + getattr(response.usage, "output_tokens", 0)
+        logger.info(f"[CLAUDE] Image prompt tokens: {img_prompt_tokens}")
+        
+        return response.content[0].text.strip(), img_prompt_tokens
         
     except Exception as e:
         logger.error(f"[CLAUDE] generate_image_prompt error: {e}")
-        return f"Professional {brand_sector} business image, modern and clean style"
+        return f"Professional {brand_sector} business image, modern and clean style", 0

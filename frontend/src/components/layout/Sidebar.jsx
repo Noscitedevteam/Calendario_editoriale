@@ -26,6 +26,8 @@ export default function Sidebar() {
 
   useEffect(() => {
     loadUsage();
+    const interval = setInterval(loadUsage, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadUsage = async () => {

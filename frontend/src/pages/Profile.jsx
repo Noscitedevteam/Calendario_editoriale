@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   User, Mail, Lock, Save, Loader2, 
   CheckCircle, AlertCircle, Eye, EyeOff, Phone,
-  Building, MapPin, Globe, FileText
+  Building, MapPin, Globe, FileText, Key
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -316,6 +316,24 @@ export default function Profile() {
         </form>
       </div>
 
+      {/* API Keys */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6">
+        <div className="p-6">
+          <h3 className="font-semibold mb-2 flex items-center gap-2">
+            <Key size={18} className="text-[#3DAFA8]" /> API Keys
+          </h3>
+          <p className="text-sm text-gray-500 mb-4">
+            Gestisci le chiavi di accesso per integrare il tuo calendario con servizi esterni (MCP Hub, CRM, automazioni).
+          </p>
+          <a
+            href="/api-keys"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#3DAFA8] text-white rounded-lg hover:bg-[#2C3E50]"
+          >
+            <Key size={16} />
+            Gestisci API Keys
+          </a>
+        </div>
+      </div>
       {/* Change Password Card */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <h3 className="font-semibold text-[#2C3E50] mb-4 flex items-center gap-2">

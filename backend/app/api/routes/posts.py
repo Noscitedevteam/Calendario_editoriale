@@ -18,6 +18,7 @@ class ImageGenerateRequest(BaseModel):
 from app.services.url_analyzer import get_brand_context_from_urls
 import asyncio
 from app.services.openai_service import OpenAIService
+from app.api.routes.subscriptions import increment_usage
 
 router = APIRouter()
 
@@ -434,6 +435,14 @@ def regenerate_post(
         if result.get("cta"):
             post.cta = result["cta"]
         
+        # Usage tracking - token da rigenerazione
+        try:
+            regen_tokens = result.get("_tokens_used", 0)
+            if regen_tokens and current_user.organization_id:
+                increment_usage(db, current_user.organization_id, tokens=regen_tokens)
+        except Exception as ue:
+            pass  # Non bloccare per errori di tracking
+        
         db.commit()
         db.refresh(post)
         return post
@@ -470,7 +479,7 @@ async def generate_post_image(
     brand = db.query(Brand).filter(Brand.id == project.brand_id).first()
     
     try:
-        detailed_prompt = generate_image_prompt(
+        detailed_prompt, prompt_tokens = generate_image_prompt(
             post_content=post.content or "",
             platform=post.platform,
             pillar=post.pillar or "",
@@ -522,6 +531,14 @@ async def generate_post_image(
                     image_url = dalle_result
         
         post.image_url = image_url
+        
+        # Usage tracking - 1 immagine + token del prompt
+        try:
+            if current_user.organization_id:
+                increment_usage(db, current_user.organization_id, images=1, tokens=prompt_tokens)
+        except Exception as ue:
+            pass
+        
         db.commit()
         db.refresh(post)
         
@@ -948,6 +965,13 @@ Rispondi SOLO con il prompt, niente altro.
         except Exception as e:
             print(f"Errore generazione immagine {i}: {e}")
             continue
+    
+    # Usage tracking - N immagini generate
+    try:
+        if current_user.organization_id and generated_images:
+            increment_usage(db, current_user.organization_id, images=len(generated_images))
+    except Exception as ue:
+        pass
     
     # Aggiorna post
     post.image_format = request.image_format
